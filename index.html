@@ -12,7 +12,7 @@
         --danger:#dc2626;--ok:#059669}
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
-  button{font-family:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 13px;border-radius:8px;cursor:pointer;font-weight:550;transition:.15s}
+  button{font-family:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 13px;border-radius:8px;cursor:pointer;font-weight:550;transition:.12s}
   button:hover{border-color:var(--accent);color:var(--accent)}
   button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
   button.primary:hover{background:#4338ca;color:#fff}
@@ -20,9 +20,7 @@
   button.sm{padding:5px 9px;font-size:12px}
   button:disabled{opacity:.5;cursor:not-allowed}
   input,select{font-family:inherit;font-size:14px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;width:100%}
-  a.link{color:var(--accent);cursor:pointer;font-size:13px}
 
-  /* ---- Login ---- */
   #auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
   .authbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.06)}
   .authbox h1{font-size:20px;margin:0 0 4px}
@@ -32,20 +30,39 @@
   .msg.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;display:block}
   .msg.ok{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;display:block}
 
-  /* ---- App shell ---- */
-  #app{display:none;min-height:100vh}
+  #app{display:none}
   .topbar{background:var(--panel);border-bottom:1px solid var(--line);padding:11px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20}
-  .brand{font-size:14px;font-weight:650}
+  .brand{font-size:14px;font-weight:650;white-space:nowrap}
   .crumbs{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .crumbs b{color:var(--ink)}
   .crumbs .c{cursor:pointer}.crumbs .c:hover{color:var(--accent)}
   .right{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted)}
-  .content{max-width:1100px;margin:0 auto;padding:24px 20px}
-  .content.wide{max-width:1500px}
+
+  .shell{display:flex;min-height:calc(100vh - 47px)}
+  #sidebar{width:210px;flex:0 0 auto;background:var(--panel);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:5px;overflow:auto;max-height:calc(100vh - 47px)}
+  .sb-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid transparent}
+  .sb-new{border:1px dashed var(--line);color:var(--muted);justify-content:center;font-weight:600}
+  .sb-new:hover{border-color:var(--accent);color:var(--accent)}
+  .sb-quick{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .sb-lbl{font-size:10px;color:var(--muted);letter-spacing:.5px;margin:12px 6px 3px;font-weight:700}
+  .sb-course{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:8px;font-size:13px;cursor:pointer}
+  .sb-course:hover{background:var(--bg)}
+  .sb-course.sel{color:var(--accent);font-weight:600}
+  .sb-course .chev{font-size:10px;color:var(--muted);width:12px}
+  .sb-course .x{margin-left:auto;color:var(--muted);opacity:0;font-size:12px}
+  .sb-course:hover .x{opacity:1}.sb-course .x:hover{color:var(--danger)}
+  .sb-eval{display:flex;align-items:center;gap:7px;padding:6px 9px 6px 26px;border-radius:8px;font-size:13px;color:var(--muted);cursor:pointer}
+  .sb-eval:hover{background:var(--bg);color:var(--ink)}
+  .sb-eval.sel{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .sb-eval .x{margin-left:auto;opacity:0;font-size:12px}.sb-eval:hover .x{opacity:.7}.sb-eval .x:hover{color:var(--danger)}
+  .sb-add{font-size:12px;color:var(--muted);padding:5px 9px 5px 26px;cursor:pointer}
+  .sb-add:hover{color:var(--accent)}
+
+  #mainPanel{flex:1;min-width:0;padding:22px 24px;overflow:auto;max-height:calc(100vh - 47px)}
   h2.title{font-size:18px;margin:0 0 2px}
-  p.hint{color:var(--muted);font-size:13px;margin:0 0 18px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-  .cardi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer;transition:.15s;position:relative}
+  p.hint{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .cardi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer;transition:.12s;position:relative}
   .cardi:hover{border-color:var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.05)}
   .cardi h3{margin:0 0 4px;font-size:15px}
   .cardi .meta{font-size:12px;color:var(--muted)}
@@ -54,20 +71,25 @@
   .newcard{border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600;min-height:86px}
   .newcard:hover{border-color:var(--accent);color:var(--accent)}
   .pill{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
-  .row-item{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;color:var(--muted);cursor:pointer;margin-bottom:14px}
+  .drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  .row-item{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
   .row-item:hover{border-color:var(--accent)}
   .row-item .nm{font-weight:550;cursor:pointer}
   .status{font-size:11px;padding:2px 8px;border-radius:20px}
   .status.pendiente{background:#fef3c7;color:#92400e}
   .status.corregido{background:#dbeafe;color:#1e40af}
   .status.enviado{background:#dcfce7;color:#166534}
+  .welcome{text-align:center;color:var(--muted);padding:70px 20px}
+  .welcome i{font-size:40px}
 
-  /* ---- Corrector ---- */
   #corrector{display:none}
-  .cor-main{display:grid;grid-template-columns:1fr 360px;gap:16px;max-width:1500px;margin:0 auto;padding:14px 20px}
+  .cor-top{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:47px;z-index:15}
+  .cor-main{display:grid;grid-template-columns:1fr 360px;gap:16px;max-width:1600px;margin:0 auto;padding:14px 20px}
   #viewer{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;max-height:82vh;overflow:auto}
   .page{position:relative;margin:0 auto 16px;box-shadow:0 2px 12px rgba(0,0,0,.12);background:#fff}
   .page canvas{display:block}
+  .page .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
   .textLayer{position:absolute;inset:0;overflow:hidden;line-height:1}
   .textLayer span{position:absolute;color:transparent;white-space:pre;transform-origin:0 0;cursor:text}
   .textLayer span::selection{background:rgba(79,70,229,.35)}
@@ -92,8 +114,6 @@
   .reclive.on{display:flex}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--danger);animation:pulse 1s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-  .drop{border:2px dashed var(--line);border-radius:10px;padding:30px;text-align:center;color:var(--muted);cursor:pointer;margin-bottom:14px}
-  .drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
   dialog{border:none;border-radius:14px;padding:0;max-width:720px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
   dialog::backdrop{background:rgba(15,23,42,.45)}
   .dlg-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -103,14 +123,13 @@
   .report .rq{font-size:12px;color:var(--muted);font-style:italic;border-left:3px solid #fbbf24;padding-left:8px;margin:8px 0 3px}
   .report .rc{margin:0 0 10px;font-size:13.5px}
   .banner{background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:12.5px;padding:9px 12px;border-radius:8px;margin-bottom:12px}
-  .spin{display:inline-block;width:13px;height:13px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
-  @media(max-width:900px){.cor-main{grid-template-columns:1fr}}
+  @media(max-width:900px){.cor-main{grid-template-columns:1fr}#sidebar{width:150px}}
 </style>
 </head>
 <body>
 
-<!-- ============ LOGIN ============ -->
 <div id="auth">
   <div class="authbox">
     <h1>🎤 Feedback por Voz</h1>
@@ -127,7 +146,6 @@
   </div>
 </div>
 
-<!-- ============ APP ============ -->
 <div id="app">
   <div class="topbar">
     <span class="brand">🎤 Feedback por Voz</span>
@@ -135,12 +153,13 @@
     <span class="right"><span id="who"></span><button id="logout" class="sm">Salir</button></span>
   </div>
 
-  <!-- Vistas de navegación -->
-  <div class="content" id="navView"></div>
+  <div class="shell" id="shell">
+    <aside id="sidebar"></aside>
+    <main id="mainPanel"></main>
+  </div>
 
-  <!-- Corrector -->
   <div id="corrector">
-    <div class="topbar" style="position:static;border-top:1px solid var(--line)">
+    <div class="cor-top">
       <button id="backCor" class="sm">← Volver</button>
       <span id="corTitle" style="font-weight:600;font-size:14px"></span>
       <span class="right">
@@ -162,6 +181,8 @@
   </div>
 </div>
 
+<input type="file" id="quickFile" accept=".pdf" hidden>
+
 <dialog id="reportDlg">
   <div class="dlg-head"><h3 style="margin:0;font-size:15px">Reporte para el alumno</h3>
     <span style="font-size:12px;color:var(--muted)">✏️ editable</span>
@@ -175,193 +196,229 @@
 </dialog>
 
 <script>
-/* ================= CONFIG ================= */
-const SUPABASE_URL = 'https://mihmdwnanxaiaguhiffu.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_PcqOCOz6n7K_L4W7DM8UYg_BZhi55_n';
-const API_BASE = ''; // /api/ai vive en el mismo dominio (Vercel)
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPABASE_URL='https://mihmdwnanxaiaguhiffu.supabase.co';
+const SUPABASE_KEY='sb_publishable_PcqOCOz6n7K_L4W7DM8UYg_BZhi55_n';
+const API_BASE='';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const $=s=>document.querySelector(s);
-let user=null, cur={course:null, evaluation:null, submission:null};
+let user=null;
+let cur={course:null,evaluation:null,submission:null};
+let courses=[], evalCache={}, expanded={};
 
-/* ================= AUTH ================= */
-function authMsg(t, ok){ const m=$('#authMsg'); m.className='msg '+(ok?'ok':'err'); m.textContent=t; }
-$('#loginBtn').onclick=async()=>{
-  const {error}=await sb.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#pass').value});
-  if(error) authMsg(error.message);
-};
-$('#signupBtn').onclick=async()=>{
-  const {data,error}=await sb.auth.signUp({email:$('#email').value.trim(),password:$('#pass').value});
-  if(error){ authMsg(error.message); return; }
-  if(data.session) authMsg('¡Cuenta creada!', true);
-  else authMsg('Cuenta creada. Si te pide confirmar por correo, confírmalo o desactiva "Confirm email" en Supabase para probar más rápido.', true);
-};
+/* ---------------- AUTH ---------------- */
+function authMsg(t,ok){ const m=$('#authMsg'); m.className='msg '+(ok?'ok':'err'); m.textContent=t; }
+$('#loginBtn').onclick=async()=>{ const {error}=await sb.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#pass').value}); if(error)authMsg(error.message); };
+$('#signupBtn').onclick=async()=>{ const {data,error}=await sb.auth.signUp({email:$('#email').value.trim(),password:$('#pass').value});
+  if(error){authMsg(error.message);return;} authMsg(data.session?'¡Cuenta creada!':'Cuenta creada. Si pide confirmar correo, confírmalo o desactiva "Confirm email" en Supabase.',true); };
 $('#logout').onclick=async()=>{ await saveNow(); await sb.auth.signOut(); };
+sb.auth.onAuthStateChange((_e,session)=>{ user=session?.user||null;
+  if(user){ $('#auth').style.display='none'; $('#app').style.display='block'; $('#who').textContent=user.email; boot(); }
+  else{ $('#auth').style.display='flex'; $('#app').style.display='none'; } });
 
-sb.auth.onAuthStateChange((_e,session)=>{
-  user=session?.user||null;
-  if(user){ $('#auth').style.display='none'; $('#app').style.display='block'; $('#who').textContent=user.email; openCourses(); }
-  else{ $('#auth').style.display='flex'; $('#app').style.display='none'; showCorrector(false); }
-});
+/* ---------------- ARRANQUE ---------------- */
+async function boot(){ const {data}=await sb.from('courses').select('*').order('created_at'); courses=data||[]; renderSidebar(); showWelcome(); }
+function showCorrector(on){ $('#corrector').style.display=on?'block':'none'; $('#shell').style.display=on?'none':'flex'; }
 
-/* ================= NAVEGACIÓN ================= */
-function crumbs(){
-  const c=$('#crumbs'); c.innerHTML='';
-  const add=(txt,fn,bold)=>{ const s=document.createElement('span'); s.className='c'+(bold?'':''); s.innerHTML=(bold?'<b>':'')+esc(txt)+(bold?'</b>':''); if(fn)s.onclick=fn; c.appendChild(s); };
-  add('Cursos', openCourses, !cur.course);
-  if(cur.course){ c.append(' / '); add(cur.course.name, ()=>openEvaluations(cur.course), !cur.evaluation); }
-  if(cur.evaluation){ c.append(' / '); add(cur.evaluation.name, ()=>openSubmissions(cur.evaluation), !cur.submission); }
-  if(cur.submission){ c.append(' / '); add(cur.submission.student_name||'Entrega', null, true); }
+/* ---------------- CRUMBS ---------------- */
+function crumbs(){ const c=$('#crumbs'); c.innerHTML='';
+  const add=(t,fn,b)=>{ const s=document.createElement('span'); s.className='c'; s.innerHTML=b?'<b>'+esc(t)+'</b>':esc(t); if(fn)s.onclick=fn; c.appendChild(s); };
+  add('Inicio',goHome,!cur.course&&!cur.evaluation);
+  if(cur.course){ c.append(' / '); add(cur.course.name,()=>selectCourse(cur.course),!cur.evaluation); }
+  if(cur.evaluation){ c.append(' / '); add(cur.evaluation.name,()=>selectEvaluation(cur.evaluation),!cur.submission); }
+  if(cur.submission){ c.append(' / '); add(cur.submission.student_name||'Entrega',null,true); }
 }
-function showCorrector(on){ $('#corrector').style.display=on?'block':'none'; $('#navView').style.display=on?'none':'block'; }
 
-/* ---- CURSOS ---- */
-async function openCourses(){
-  if(cur.submission) await saveNow();
-  cur={course:null,evaluation:null,submission:null}; showCorrector(false); crumbs();
-  const {data,error}=await sb.from('courses').select('*').order('created_at');
-  const v=$('#navView');
-  v.innerHTML=`<h2 class="title">Tus cursos</h2><p class="hint">Organiza tus correcciones por curso o asignatura.</p><div class="grid" id="g"></div>`;
-  if(error){ v.innerHTML+='<p class="hint">Error: '+esc(error.message)+'</p>'; return; }
+/* ---------------- SIDEBAR ---------------- */
+async function renderSidebar(){
+  const sb1=$('#sidebar'); sb1.innerHTML='';
+  sb1.appendChild(mk('div','sb-btn sb-new','＋ Nuevo curso',newCourse));
+  sb1.appendChild(mk('div','sb-btn sb-quick','⚡ Documento rápido',quickDoc));
+  const lbl=document.createElement('div'); lbl.className='sb-lbl'; lbl.textContent='CURSOS'; sb1.appendChild(lbl);
+  courses.forEach(co=>{
+    const isSel=cur.course&&cur.course.id===co.id;
+    const row=mk('div','sb-course'+(isSel?' sel':''),'');
+    row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(co.name)}</span><span class="x" title="Borrar">✕</span>`;
+    row.querySelector('.chev').onclick=(e)=>{e.stopPropagation();toggleCourse(co);};
+    row.onclick=(e)=>{ if(!e.target.classList.contains('x')) selectCourse(co); };
+    row.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('courses',co.id,'¿Borrar el curso y todo lo que contiene?',boot);};
+    sb1.appendChild(row);
+    if(expanded[co.id]){ (evalCache[co.id]||[]).forEach(ev=>{
+        const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
+        er.innerHTML=`📝 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ev.name)}</span><span class="x">✕</span>`;
+        er.onclick=(e)=>{ if(!e.target.classList.contains('x')) selectEvaluation(ev); };
+        er.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();});};
+        sb1.appendChild(er);
+      });
+      sb1.appendChild(mk('div','sb-add','＋ nueva evaluación',()=>newEvaluation(co)));
+    }
+  });
+}
+async function loadEvals(co,force){ if(force||!evalCache[co.id]){ const {data}=await sb.from('evaluations').select('*').eq('course_id',co.id).order('created_at'); evalCache[co.id]=data||[]; } return evalCache[co.id]; }
+async function toggleCourse(co){ expanded[co.id]=!expanded[co.id]; if(expanded[co.id]) await loadEvals(co); renderSidebar(); }
+
+/* ---------------- ACCIONES MENÚ ---------------- */
+async function newCourse(){ const name=prompt('Nombre del curso (ej: Historia 3°A):'); if(!name)return;
+  const {data,error}=await sb.from('courses').insert({name}).select().single(); if(error){alert(error.message);return;} courses.push(data); renderSidebar(); selectCourse(data); }
+async function newEvaluation(co){ const name=prompt('Nombre (ej: Tesis final, Control 5):'); if(!name)return;
+  const type=confirm('¿Es un CONTROL/PRUEBA con varios alumnos?\n\nAceptar = Control (varios alumnos)\nCancelar = Ensayo/Tesis')?'control':'ensayo';
+  const {data,error}=await sb.from('evaluations').insert({name,type,course_id:co.id}).select().single(); if(error){alert(error.message);return;}
+  (evalCache[co.id]=evalCache[co.id]||[]).push(data); expanded[co.id]=true; renderSidebar(); selectEvaluation(data); }
+
+function goHome(){ cur={course:null,evaluation:null,submission:null}; crumbs(); renderSidebar(); showWelcome(); }
+async function selectCourse(co){ if(cur.submission) await saveNow(); cur={course:co,evaluation:null,submission:null}; expanded[co.id]=true; await loadEvals(co); showCorrector(false); crumbs(); renderSidebar(); renderEvaluationsMain(co); }
+async function selectEvaluation(ev){ if(cur.submission) await saveNow(); const co=courses.find(c=>c.id===ev.course_id)||cur.course; cur={course:co,evaluation:ev,submission:null}; showCorrector(false); crumbs(); renderSidebar(); renderSubmissionsMain(ev); }
+
+/* ---------------- MAIN: WELCOME ---------------- */
+function showWelcome(){ $('#mainPanel').innerHTML=`<div class="welcome"><div>🎤</div>
+  <h2 class="title" style="margin-top:10px">Bienvenida, corrige hablando</h2>
+  <p class="hint">Elige un curso en la izquierda, o usa <b>⚡ Documento rápido</b> para corregir un PDF suelto al instante.</p></div>`; }
+
+/* ---------------- MAIN: EVALUACIONES ---------------- */
+function renderEvaluationsMain(co){
+  const v=$('#mainPanel');
+  v.innerHTML=`<h2 class="title">${esc(co.name)}</h2><p class="hint">Evaluaciones de este curso.</p><div class="grid" id="g"></div>`;
   const g=$('#g');
-  (data||[]).forEach(c=>{
-    const el=div(`<div class="cardi"><span class="x">✕</span><h3>📚 ${esc(c.name)}</h3><div class="meta">Abrir</div></div>`);
-    el.querySelector('h3').onclick=()=>openEvaluations(c);
-    el.onclick=(e)=>{ if(!e.target.classList.contains('x')) openEvaluations(c); };
-    el.querySelector('.x').onclick=(e)=>{ e.stopPropagation(); del('courses',c.id,'¿Borrar el curso y todo lo que contiene?',openCourses); };
+  (evalCache[co.id]||[]).forEach(ev=>{
+    const el=mk('div','cardi','');
+    el.innerHTML=`<span class="x">✕</span><h3>📝 ${esc(ev.name)}</h3><div class="meta"><span class="pill">${ev.type==='control'?'Control · varios alumnos':'Ensayo/Tesis'}</span></div>`;
+    el.onclick=(e)=>{ if(!e.target.classList.contains('x')) selectEvaluation(ev); };
+    el.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();renderEvaluationsMain(co);});};
     g.appendChild(el);
   });
-  const nc=div(`<div class="cardi newcard">＋ Nuevo curso</div>`);
-  nc.onclick=async()=>{ const name=prompt('Nombre del curso (ej: Historia 3°A):'); if(!name)return;
-    const {error}=await sb.from('courses').insert({name}); if(error)alert(error.message); else openCourses(); };
-  g.appendChild(nc);
+  const nc=mk('div','cardi newcard','＋ Nueva evaluación',()=>newEvaluation(co)); g.appendChild(nc);
 }
 
-/* ---- EVALUACIONES ---- */
-async function openEvaluations(course){
-  if(cur.submission) await saveNow();
-  cur={course,evaluation:null,submission:null}; showCorrector(false); crumbs();
-  const {data}=await sb.from('evaluations').select('*').eq('course_id',course.id).order('created_at');
-  const v=$('#navView');
-  v.innerHTML=`<h2 class="title">${esc(course.name)}</h2><p class="hint">Evaluaciones de este curso (una tesis, un control, un ensayo…).</p><div class="grid" id="g"></div>`;
-  const g=$('#g');
-  (data||[]).forEach(e=>{
-    const el=div(`<div class="cardi"><span class="x">✕</span><h3>📝 ${esc(e.name)}</h3><div class="meta"><span class="pill">${e.type==='control'?'Control · varios alumnos':'Ensayo/Tesis'}</span></div></div>`);
-    el.onclick=(ev)=>{ if(!ev.target.classList.contains('x')) openSubmissions(e); };
-    el.querySelector('.x').onclick=(ev)=>{ ev.stopPropagation(); del('evaluations',e.id,'¿Borrar esta evaluación y sus entregas?',()=>openEvaluations(course)); };
-    g.appendChild(el);
-  });
-  const nc=div(`<div class="cardi newcard">＋ Nueva evaluación</div>`);
-  nc.onclick=async()=>{ const name=prompt('Nombre (ej: Tesis final, Control 5):'); if(!name)return;
-    const type=confirm('¿Es un CONTROL/PRUEBA con varios alumnos?\n\nAceptar = Control (varios alumnos)\nCancelar = Ensayo/Tesis')?'control':'ensayo';
-    const {error}=await sb.from('evaluations').insert({name,type,course_id:course.id}); if(error)alert(error.message); else openEvaluations(course); };
-  g.appendChild(nc);
+/* ---------------- MAIN: ENTREGAS ---------------- */
+async function renderSubmissionsMain(ev){
+  const v=$('#mainPanel');
+  v.innerHTML=`<h2 class="title">${esc(ev.name)}</h2><p class="hint">Sube los PDF de los alumnos. Cada uno es una entrega.</p>
+    <div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir (puedes varios).</div>
+    <div id="subs"><p class="hint">Cargando…</p></div>`;
+  const drop=$('#drop');
+  drop.onclick=()=>pickFiles(ev);
+  drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
+  drop.addEventListener('dragleave',e=>{e.preventDefault();drop.classList.remove('drag');});
+  drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag'); if(e.dataTransfer.files.length) uploadSubs(e.dataTransfer.files,ev);});
+  refreshSubs(ev);
 }
-
-/* ---- ENTREGAS ---- */
-async function openSubmissions(ev){
-  if(cur.submission) await saveNow();
-  cur={course:cur.course,evaluation:ev,submission:null}; showCorrector(false); crumbs();
+async function refreshSubs(ev){
   const {data}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
-  const v=$('#navView');
-  v.innerHTML=`<h2 class="title">${esc(ev.name)}</h2>
-    <p class="hint">Sube los documentos (PDF) de los alumnos. Cada uno es una entrega.</p>
-    <div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir. Puedes subir varios.</div>
-    <input type="file" id="subFile" accept=".pdf" multiple hidden>
-    <div id="subs"></div>`;
-  const subs=$('#subs');
-  (data||[]).forEach(s=>{
-    const el=div(`<div class="row-item">
-      <span style="font-size:18px">🧑‍🎓</span>
-      <span class="nm">${esc(s.student_name||'Entrega')}</span>
+  const subs=$('#subs'); if(!subs)return; subs.innerHTML='';
+  if(!(data||[]).length){ subs.innerHTML='<p class="hint">Aún no hay entregas. Sube el primer PDF arriba.</p>'; return; }
+  data.forEach(s=>{
+    const el=mk('div','row-item','');
+    el.innerHTML=`<span style="font-size:18px">🧑‍🎓</span><span class="nm">${esc(s.student_name||'Entrega')}</span>
       <span class="status ${s.status}">${s.status}</span>
       <span style="margin-left:auto;display:flex;gap:6px">
-        <button class="sm open">Corregir</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button>
-      </span></div>`);
+        <button class="sm open">Corregir</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button></span>`;
     el.querySelector('.open').onclick=()=>openSubmission(s);
     el.querySelector('.nm').onclick=()=>openSubmission(s);
-    el.querySelector('.rename').onclick=async()=>{ const n=prompt('Nombre del alumno:',s.student_name||''); if(n===null)return;
-      await sb.from('submissions').update({student_name:n}).eq('id',s.id); openSubmissions(ev); };
-    el.querySelector('.delb').onclick=()=>del('submissions',s.id,'¿Borrar esta entrega?',()=>openSubmissions(ev));
+    el.querySelector('.rename').onclick=async()=>{ const n=prompt('Nombre del alumno:',s.student_name||''); if(n===null)return; await sb.from('submissions').update({student_name:n}).eq('id',s.id); refreshSubs(ev); };
+    el.querySelector('.delb').onclick=()=>del('submissions',s.id,'¿Borrar esta entrega?',()=>refreshSubs(ev));
     subs.appendChild(el);
   });
-  // subida
-  const fileInput=$('#subFile'), drop=$('#drop');
-  drop.onclick=()=>fileInput.click();
-  fileInput.onchange=e=>uploadSubs(e.target.files,ev);
-  ['dragover','dragenter'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.add('drag');}));
-  ['dragleave','drop'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.remove('drag');if(x==='drop')uploadSubs(e.dataTransfer.files,ev);}));
 }
-
-async function uploadSubs(files, ev){
+function pickFiles(ev){ const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf'; inp.multiple=true;
+  inp.onchange=()=>{ if(inp.files.length) uploadSubs(inp.files,ev); }; inp.click(); }
+async function uploadSubs(files,ev){
+  const subs=$('#subs'); if(subs) subs.insertAdjacentHTML('afterbegin','<p class="hint" id="uptmp">Subiendo…</p>');
   for(const f of files){
     if(!f.name.toLowerCase().endsWith('.pdf')){ alert('Por ahora solo PDF: '+f.name); continue; }
     const path=`${user.id}/${crypto.randomUUID()}-${f.name}`;
     const up=await sb.storage.from('documentos').upload(path,f);
     if(up.error){ alert('Error al subir '+f.name+': '+up.error.message); continue; }
-    await sb.from('submissions').insert({evaluation_id:ev.id, student_name:f.name.replace(/\.pdf$/i,''), file_path:path});
+    await sb.from('submissions').insert({evaluation_id:ev.id,student_name:f.name.replace(/\.pdf$/i,''),file_path:path});
   }
-  openSubmissions(ev);
+  const t=$('#uptmp'); if(t)t.remove();
+  refreshSubs(ev);
 }
 
+/* ---------------- DOCUMENTO RÁPIDO ---------------- */
+async function quickDoc(){
+  let co=courses.find(c=>c.name==='⚡ Documentos rápidos');
+  if(!co){ const {data}=await sb.from('courses').insert({name:'⚡ Documentos rápidos'}).select().single(); co=data; courses.push(co); }
+  let evs=await loadEvals(co); let ev=evs.find(e=>e.name==='Sueltos');
+  if(!ev){ const {data}=await sb.from('evaluations').insert({name:'Sueltos',type:'ensayo',course_id:co.id}).select().single(); ev=data; evs.push(ev); }
+  quickTargetEv=ev; $('#quickFile').click();
+}
+let quickTargetEv=null;
+$('#quickFile').onchange=async()=>{ const f=$('#quickFile').files[0]; if(!f||!quickTargetEv)return;
+  const ev=quickTargetEv; const path=`${user.id}/${crypto.randomUUID()}-${f.name}`;
+  const up=await sb.storage.from('documentos').upload(path,f); if(up.error){alert(up.error.message);return;}
+  const {data}=await sb.from('submissions').insert({evaluation_id:ev.id,student_name:f.name.replace(/\.pdf$/i,''),file_path:path}).select().single();
+  $('#quickFile').value=''; openSubmission(data); };
+
 /* ================= CORRECTOR ================= */
-let pdfDoc=null, scale=1.0, comments=[], activeId=null;
+let pdfDoc=null, scale=1.0, comments=[], activeId=null, pageState={}, io=null;
 let recognition=null, recording=false, recTarget=null;
 
 async function openSubmission(s){
   if(cur.submission && cur.submission.id!==s.id) await saveNow();
-  cur.submission=s; crumbs(); showCorrector(true);
+  const co=courses.find(c=>c.id===(cur.course?.id));
+  cur.submission=s;
+  if(!cur.evaluation) { const {data}=await sb.from('evaluations').select('*').eq('id',s.evaluation_id).single(); if(data){cur.evaluation=data; cur.course=courses.find(c=>c.id===data.course_id)||cur.course;} }
+  crumbs(); showCorrector(true);
   $('#corTitle').textContent=s.student_name||'Entrega';
   $('#viewer').innerHTML='<p class="hint" style="padding:20px">Cargando documento…</p>';
-  comments=[]; activeId=null; renderList();
-  // cargar archivo desde Storage
+  comments=[]; activeId=null; renderList(); setSaveState('💾 Guardar');
   const dl=await sb.storage.from('documentos').download(s.file_path);
-  if(dl.error){ $('#viewer').innerHTML='<p class="hint" style="padding:20px">No se pudo cargar el archivo: '+esc(dl.error.message)+'</p>'; return; }
+  if(dl.error){ $('#viewer').innerHTML='<p class="hint" style="padding:20px">No se pudo cargar: '+esc(dl.error.message)+'</p>'; return; }
   const ab=await dl.data.arrayBuffer();
   pdfDoc=await pdfjsLib.getDocument({data:ab}).promise;
   await renderAll();
-  // cargar comentarios guardados
   const {data}=await sb.from('comments').select('*').eq('submission_id',s.id).order('position');
-  comments=(data||[]).map(c=>({id:'c'+c.id, dbId:c.id, page:c.page, rects:c.rects||[], quote:c.quote||'', text:c.body||'', aiText:c.ai_text||'', useAi:!!c.use_ai}));
+  comments=(data||[]).map(c=>({id:'c'+c.id,page:c.page,rects:c.rects||[],quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai}));
   renderList(); drawAllHighlights();
 }
-$('#backCor').onclick=async()=>{ await saveNow(); openSubmissions(cur.evaluation); };
+$('#backCor').onclick=async()=>{ await saveNow(); selectEvaluation(cur.evaluation); };
 
+/* ---- render PEREZOSO: solo dibuja páginas visibles ---- */
 async function renderAll(){
-  const viewer=$('#viewer'); viewer.innerHTML='';
+  const viewer=$('#viewer'); viewer.innerHTML=''; pageState={};
+  if(io) io.disconnect();
+  io=new IntersectionObserver(onVisible,{root:viewer,rootMargin:'400px 0px'});
   const targetW=Math.min(viewer.clientWidth-36,900)*scale;
   for(let n=1;n<=pdfDoc.numPages;n++){
     const page=await pdfDoc.getPage(n);
-    const base=page.getViewport({scale:1});
-    const vp=page.getViewport({scale:targetW/base.width});
-    const dpr=window.devicePixelRatio||1;
-    const wrap=div('<div class="page"></div>'); wrap.style.width=vp.width+'px'; wrap.style.height=vp.height+'px'; wrap.dataset.page=n;
-    const canvas=document.createElement('canvas');
-    canvas.width=vp.width*dpr; canvas.height=vp.height*dpr; canvas.style.width=vp.width+'px'; canvas.style.height=vp.height+'px';
-    const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr); wrap.appendChild(canvas);
-    const hl=div('<div class="hlLayer"></div>'); wrap.appendChild(hl);
-    const tl=div('<div class="textLayer"></div>'); wrap.appendChild(tl);
+    const vp=page.getViewport({scale:targetW/page.getViewport({scale:1}).width});
+    const wrap=mk('div','page',''); wrap.style.width=vp.width+'px'; wrap.style.height=vp.height+'px'; wrap.dataset.page=n;
+    wrap.appendChild(mk('div','ph','pág. '+n));
+    wrap.appendChild(mk('div','hlLayer',''));
     viewer.appendChild(wrap);
-    await page.render({canvasContext:ctx,viewport:vp}).promise;
-    const tc=await page.getTextContent();
-    tc.items.forEach(item=>{ if(!item.str)return;
-      const tx=pdfjsLib.Util.transform(vp.transform,item.transform); const h=Math.hypot(tx[2],tx[3]);
-      const sp=document.createElement('span'); sp.textContent=item.str;
-      sp.style.left=tx[4]+'px'; sp.style.top=(tx[5]-h)+'px'; sp.style.fontSize=h+'px'; sp.style.fontFamily='sans-serif';
-      tl.appendChild(sp); const target=item.width*vp.scale, real=sp.getBoundingClientRect().width;
-      if(real>0&&target>0) sp.style.transform='scaleX('+(target/real)+')';
-    });
+    pageState[n]={page,vp,wrap,rendered:false};
+    io.observe(wrap);
   }
-  drawAllHighlights();
+}
+function onVisible(entries){ entries.forEach(e=>{ if(e.isIntersecting){ const n=+e.target.dataset.page; renderPage(n); } }); }
+async function renderPage(n){
+  const st=pageState[n]; if(!st||st.rendered)return; st.rendered=true;
+  const {page,vp,wrap}=st; const dpr=window.devicePixelRatio||1;
+  const canvas=document.createElement('canvas');
+  canvas.width=vp.width*dpr; canvas.height=vp.height*dpr; canvas.style.width=vp.width+'px'; canvas.style.height=vp.height+'px';
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  wrap.insertBefore(canvas,wrap.firstChild);
+  const ph=wrap.querySelector('.ph'); if(ph)ph.remove();
+  await page.render({canvasContext:ctx,viewport:vp}).promise;
+  const tl=mk('div','textLayer','');
+  const tc=await page.getTextContent();
+  tc.items.forEach(item=>{ if(!item.str)return;
+    const tx=pdfjsLib.Util.transform(vp.transform,item.transform); const h=Math.hypot(tx[2],tx[3]);
+    const sp=document.createElement('span'); sp.textContent=item.str;
+    sp.style.left=tx[4]+'px'; sp.style.top=(tx[5]-h)+'px'; sp.style.fontSize=h+'px'; sp.style.fontFamily='sans-serif';
+    tl.appendChild(sp); const target=item.width*vp.scale, real=sp.getBoundingClientRect().width;
+    if(real>0&&target>0) sp.style.transform='scaleX('+(target/real)+')';
+  });
+  wrap.appendChild(tl);
+  drawHighlightsForPage(n);
 }
 
 $('#rec').onclick=()=>{
   if(recording){ stopRec(); return; }
   const sel=window.getSelection();
   if(!sel.rangeCount||sel.isCollapsed){ alert('Selecciona con el mouse el texto a comentar.'); return; }
-  const range=sel.getRangeAt(0);
-  const node=range.commonAncestorContainer;
+  const range=sel.getRangeAt(0); const node=range.commonAncestorContainer;
   const pageEl=(node.nodeType===1?node:node.parentElement).closest('.page');
   if(!pageEl){ alert('La selección debe estar dentro del documento.'); return; }
   const pr=pageEl.getBoundingClientRect();
@@ -372,15 +429,15 @@ $('#rec').onclick=()=>{
   sel.removeAllRanges(); recTarget=id; renderList(); drawAllHighlights(); focusC(id); startRec(); scheduleSave();
 };
 
-function drawAllHighlights(){
-  document.querySelectorAll('.hlLayer').forEach(l=>l.innerHTML='');
-  comments.forEach(c=>{ const wrap=document.querySelector('.page[data-page="'+c.page+'"]'); if(!wrap)return;
-    const layer=wrap.querySelector('.hlLayer'),W=wrap.clientWidth,H=wrap.clientHeight;
-    c.rects.forEach(r=>{ const b=div('<div class="hlBox"></div>'); if(c.id===activeId)b.classList.add('active');
-      b.style.left=r.x*W+'px'; b.style.top=r.y*H+'px'; b.style.width=r.w*W+'px'; b.style.height=r.h*H+'px';
-      b.onclick=()=>focusC(c.id); layer.appendChild(b); });
-  });
+function drawHighlightsForPage(n){
+  const wrap=document.querySelector('.page[data-page="'+n+'"]'); if(!wrap)return;
+  const layer=wrap.querySelector('.hlLayer'); if(!layer)return; layer.innerHTML='';
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  comments.filter(c=>c.page===n).forEach(c=>{ c.rects.forEach(r=>{
+    const b=mk('div','hlBox'+(c.id===activeId?' active':''),''); b.style.left=r.x*W+'px'; b.style.top=r.y*H+'px'; b.style.width=r.w*W+'px'; b.style.height=r.h*H+'px';
+    b.onclick=()=>focusC(c.id); layer.appendChild(b); }); });
 }
+function drawAllHighlights(){ Object.keys(pageState).forEach(n=>{ if(pageState[n].rendered||document.querySelector('.page[data-page="'+n+'"] .hlLayer')) drawHighlightsForPage(+n); }); }
 
 /* voz */
 function initRec(){ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -389,16 +446,14 @@ function initRec(){ const SR=window.SpeechRecognition||window.webkitSpeechRecogn
 function startRec(){ recognition=initRec(); if(!recognition){recTarget=null;return;}
   let base=getC(recTarget)?.text||'';
   recognition.onresult=ev=>{ let it='';
-    for(let i=ev.resultIndex;i<ev.results.length;i++){ const t=ev.results[i][0].transcript;
-      if(ev.results[i].isFinal)base+=(base?' ':'')+t.trim(); else it+=t; }
+    for(let i=ev.resultIndex;i<ev.results.length;i++){ const t=ev.results[i][0].transcript; if(ev.results[i].isFinal)base+=(base?' ':'')+t.trim(); else it+=t; }
     const c=getC(recTarget); if(c){ c.text=(base+' '+it).trim(); renderList(); } };
   recognition.onerror=()=>stopRec(); recognition.onend=()=>{ if(recording)stopRec(); };
   try{ recognition.start(); recording=true; recUI(true);}catch(e){} }
 function stopRec(){ recording=false; recUI(false);
   if(recognition){ try{recognition.stop();}catch(e){} recognition=null; }
   const c=getC(recTarget); if(c)c.text=c.text.trim(); recTarget=null; renderList(); scheduleSave(); }
-function recUI(on){ $('#rec').textContent=on?'⏹ Detener':'🎤 Comentar selección';
-  $('#rec').classList.toggle('primary',on); $('#rec').classList.toggle('rec',!on); $('#live').classList.toggle('on',on); }
+function recUI(on){ $('#rec').textContent=on?'⏹ Detener':'🎤 Comentar selección'; $('#rec').classList.toggle('primary',on); $('#rec').classList.toggle('rec',!on); $('#live').classList.toggle('on',on); }
 
 /* lista */
 const getC=id=>comments.find(c=>c.id===id);
@@ -409,17 +464,14 @@ function renderList(){
   if(!comments.length){ box.innerHTML='<div class="hint" style="padding:20px 4px;text-align:center">Selecciona texto y presiona <b>Comentar selección</b>.</div>'; return; }
   box.innerHTML='';
   comments.forEach((c,i)=>{
-    const d=div(`<div class="cmt${c.id===activeId?' active':''}" data-id="${c.id}">
-      <div class="q">pág. ${c.page} · “${esc(c.quote)}”</div>
+    const d=mk('div','cmt'+(c.id===activeId?' active':''),''); d.dataset.id=c.id;
+    d.innerHTML=`<div class="q">pág. ${c.page} · “${esc(c.quote)}”</div>
       <textarea class="own" placeholder="Comentario…">${esc(c.text)}</textarea>
-      <div class="r"><button class="aiBtn">✨ Optimizar IA</button><button class="del">🗑</button></div>
-      <div class="aiWrap"></div></div>`);
+      <div class="r"><button class="aiBtn">✨ Optimizar IA</button><button class="del">🗑</button></div><div class="aiWrap"></div>`;
     const own=d.querySelector('.own'); own.oninput=()=>{c.text=own.value; scheduleSave();}; own.onfocus=()=>focusC(c.id);
     const aiBtn=d.querySelector('.aiBtn');
-    aiBtn.onclick=async()=>{ if(!c.text.trim()){alert('Escribe o dicta primero.');return;}
-      aiBtn.disabled=true; aiBtn.innerHTML='<span class="spin"></span>';
-      try{ c.aiText=await aiCall({mode:'optimize',text:c.text,quote:c.quote}); c.useAi=true; }
-      catch(e){ alert('No se pudo usar la IA (¿publicaste en Vercel con la key?): '+e.message); }
+    aiBtn.onclick=async()=>{ if(!c.text.trim()){alert('Escribe o dicta primero.');return;} aiBtn.disabled=true; aiBtn.innerHTML='<span class="spin"></span>';
+      try{ c.aiText=await aiCall({mode:'optimize',text:c.text,quote:c.quote}); c.useAi=true; }catch(e){ alert('No se pudo usar la IA: '+e.message); }
       renderList(); scheduleSave(); };
     d.querySelector('.del').onclick=()=>{ comments=comments.filter(x=>x.id!==c.id); if(activeId===c.id)activeId=null; renderList(); drawAllHighlights(); scheduleSave(); };
     if(c.aiText){ const w=d.querySelector('.aiWrap');
@@ -434,9 +486,9 @@ function renderList(){
   });
 }
 
-/* ---- GUARDADO AUTOMÁTICO (100% guardado) ---- */
+/* ---- GUARDADO AUTOMÁTICO ---- */
 let saveTimer=null, saving=false;
-function setSaveState(t){ const b=$('#saveBtn'); if(b) b.textContent=t; }
+function setSaveState(t){ const b=$('#saveBtn'); if(b)b.textContent=t; }
 function scheduleSave(){ setSaveState('💾 sin guardar'); clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,1200); }
 async function saveNow(){
   if(!cur.submission) return;
@@ -446,9 +498,8 @@ async function saveNow(){
   const rows=comments.map((c,i)=>({submission_id:sid,page:c.page,rects:c.rects,quote:c.quote,body:c.text,ai_text:c.aiText,use_ai:c.useAi,position:i}));
   let err=(await sb.from('comments').delete().eq('submission_id',sid)).error;
   if(!err && rows.length) err=(await sb.from('comments').insert(rows)).error;
-  if(!err){ const st=comments.length?'corregido':'pendiente'; await sb.from('submissions').update({status:st}).eq('id',sid); if(cur.submission) cur.submission.status=st; }
-  saving=false;
-  setSaveState(err?('⚠️ '+err.message):'✅ Guardado');
+  if(!err){ const st=comments.length?'corregido':'pendiente'; await sb.from('submissions').update({status:st}).eq('id',sid); if(cur.submission)cur.submission.status=st; }
+  saving=false; setSaveState(err?('⚠️ '+err.message):'✅ Guardado');
 }
 $('#saveBtn').onclick=()=>saveNow();
 
@@ -459,13 +510,12 @@ $('#consBtn').onclick=async()=>{
   const btn=$('#consBtn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   let summary='',note='';
   if(list.length){ try{ summary=await aiCall({mode:'consolidate',doc:cur.submission.student_name||'',comments:list.map(c=>({quote:c.quote,text:finalText(c)}))}); }
-    catch(e){ summary=`Se realizaron ${list.length} observaciones sobre tu trabajo. Revisa cada comentario junto a la parte del texto correspondiente.`; note='🤖 IA no disponible (publica en Vercel con la key). Resumen básico; editable.'; } }
+    catch(e){ summary=`Se realizaron ${list.length} observaciones sobre tu trabajo. Revisa cada comentario junto a la parte del texto correspondiente.`; note='🤖 IA no disponible. Resumen básico; editable.'; } }
   let html=note?`<div class="banner">${note}</div>`:'';
   if(summary) html+=`<h4>Resumen</h4><p class="rc">${esc(summary)}</p>`;
   html+='<h4>Comentarios</h4>';
   list.forEach((c,i)=>html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`);
-  $('#reportContent').innerHTML=html; btn.disabled=false; btn.textContent='✨ Consolidar';
-  $('#reportDlg').showModal();
+  $('#reportContent').innerHTML=html; btn.disabled=false; btn.textContent='✨ Consolidar'; $('#reportDlg').showModal();
 };
 $('#closeDlg').onclick=()=>$('#reportDlg').close();
 function repExport(){ const c=$('#reportContent').cloneNode(true); const b=c.querySelector('.banner'); if(b)b.remove(); return c.innerHTML; }
@@ -476,16 +526,13 @@ $('#dlPdf').onclick=()=>{ const name=cur.submission.student_name||'alumno'; cons
   w.document.write(`<html><head><meta charset="utf-8"><title>Retro</title><style>body{font-family:Arial;padding:30px;line-height:1.5}.rq{font-size:12px;color:#666;font-style:italic;border-left:3px solid #fbbf24;padding-left:8px;margin:8px 0 3px}.rc{font-size:13px;margin:0 0 10px}</style></head><body><h2>Retroalimentación — ${esc(name)}</h2>${repExport()}</body></html>`);
   w.document.close(); setTimeout(()=>w.print(),300); };
 
-/* ================= util ================= */
-async function aiCall(payload){
-  const r=await fetch(API_BASE+'/api/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-  const d=await r.json().catch(()=>({})); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d.text;
-}
+/* util */
+async function aiCall(payload){ const r=await fetch(API_BASE+'/api/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json().catch(()=>({})); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d.text; }
 async function del(table,id,msg,then){ if(!confirm(msg))return; const {error}=await sb.from(table).delete().eq('id',id); if(error)alert(error.message); else then(); }
-function div(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstChild; }
+function mk(tag,cls,txt,onclick){ const e=document.createElement(tag); e.className=cls; if(txt)e.textContent=txt; if(onclick)e.onclick=onclick; return e; }
 function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
-/* arranque: revisar sesión */
 sb.auth.getSession();
 </script>
 </body>
