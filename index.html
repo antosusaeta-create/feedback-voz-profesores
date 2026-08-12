@@ -69,13 +69,20 @@
   .shell.nosb #sidebar{display:none}
   #toggleSb{border:none;background:transparent;font-size:17px;padding:2px 6px;color:var(--muted)}
   #toggleSb:hover{color:var(--accent)}
-  table.board{border-collapse:collapse;font-size:13px}
-  table.board th,table.board td{border:1px solid var(--line);padding:7px 10px;text-align:center}
-  table.board th{background:var(--bg);font-weight:600}
-  table.board td.nm{text-align:left;font-weight:550;white-space:nowrap}
-  table.board td.cell{cursor:pointer;user-select:none;font-size:15px}
+  table.board{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  table.board th{background:var(--bg);font-weight:600;padding:11px 12px;text-align:center;color:var(--muted);font-size:11px;letter-spacing:.3px;text-transform:uppercase;border-bottom:1px solid var(--line)}
+  table.board td{padding:9px 12px;text-align:center;border-bottom:1px solid var(--line)}
+  table.board tr:last-child td{border-bottom:none}
+  table.board tr:hover td{background:#fafafa}
+  table.board td.nm{text-align:left;font-weight:600;white-space:nowrap}
+  table.board td.cell{cursor:pointer;user-select:none}
   table.board td.cell:hover{background:var(--accent-soft)}
-  table.board td.cell.on{background:#dcfce7}
+  .bdot{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line);font-size:12px;color:transparent;transition:.12s}
+  .bdot.done{background:var(--ok);border-color:var(--ok);color:#fff}
+  .pbar{height:8px;background:var(--bg);border-radius:20px;overflow:hidden;margin:6px 0 14px;max-width:520px}
+  .pbar>div{height:8px;background:var(--ok);border-radius:20px}
+  .bopen{border:none;background:transparent;color:var(--accent);font-size:12px;padding:4px 8px}
+  .bopen:hover{text-decoration:underline}
   #recFab{position:fixed;right:26px;bottom:26px;z-index:40;background:var(--danger);color:#fff;border:none;width:auto;
           padding:13px 20px;border-radius:30px;font-size:14px;font-weight:600;box-shadow:0 5px 16px rgba(0,0,0,.22);cursor:pointer}
   #recFab:hover{filter:brightness(1.05)}
@@ -207,6 +214,13 @@
 </div>
 
 <input type="file" id="quickFile" accept=".pdf" hidden>
+
+<dialog id="secDlg">
+  <div class="dlg-head"><h3 style="margin:0;font-size:15px">¿Qué corregiste de esta entrega?</h3></div>
+  <div class="dlg-body"><p class="hint">Marca las secciones que dejaste corregidas. Queda guardado en el tablero.</p><div id="secDlgBody"></div></div>
+  <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+    <button id="secDlgSkip" class="sm">Ahora no</button><button id="secDlgSave" class="primary sm">Guardar avance</button></div>
+</dialog>
 
 <dialog id="reportDlg">
   <div class="dlg-head"><h3 style="margin:0;font-size:15px">Reporte para el alumno</h3>
@@ -381,11 +395,13 @@ async function refreshBoard(ev){
   if(!(data||[]).length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
   let done=0; const total=data.length*secs.length; let rows='';
   data.forEach(s=>{ const prog=s.section_progress||{}; rows+='<tr><td class="nm">'+esc(s.student_name||'Entrega')+'</td>';
-    secs.forEach(sec=>{ const on=prog[sec]==='corregido'; if(on)done++; rows+=`<td class="cell${on?' on':''}" data-sub="${s.id}" data-sec="${esc(sec)}">${on?'✅':'⬜'}</td>`; });
-    rows+='<td><button class="sm open" data-sub="'+s.id+'">Corregir</button></td></tr>'; });
+    secs.forEach(sec=>{ const on=prog[sec]==='corregido'; if(on)done++; rows+=`<td class="cell" data-sub="${s.id}" data-sec="${esc(sec)}"><span class="bdot${on?' done':''}">✓</span></td>`; });
+    rows+='<td><button class="bopen open" data-sub="'+s.id+'">Corregir →</button></td></tr>'; });
   const pct=total?Math.round(100*done/total):0;
-  box.innerHTML=`<div style="margin-bottom:8px;font-size:13px;color:var(--muted)">Avance: <b style="color:var(--ink)">${done}/${total}</b> celdas · ${pct}% · haz clic en una celda para marcarla corregida</div>
-    <div style="overflow-x:auto"><table class="board"><thead><tr><th>Alumno</th>${secs.map(s=>'<th>'+esc(s)+'</th>').join('')}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  box.innerHTML=`<div style="font-size:13px;color:var(--muted)">Avance <b style="color:var(--ink)">${done}/${total}</b> · ${pct}%</div>
+    <div class="pbar"><div style="width:${pct}%"></div></div>
+    <div style="overflow-x:auto"><table class="board"><thead><tr><th style="text-align:left">Alumno</th>${secs.map(s=>'<th>'+esc(s)+'</th>').join('')}<th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin-top:8px">Haz clic en un círculo para marcarlo, o márcalos en el popup al salir de cada corrección.</p>`;
   box.querySelectorAll('.cell').forEach(td=>{ td.onclick=async()=>{ const sid=td.dataset.sub,sec=td.dataset.sec; const sObj=data.find(x=>x.id===sid); const prog=sObj.section_progress||{};
     if(prog[sec]==='corregido') delete prog[sec]; else prog[sec]='corregido'; sObj.section_progress=prog;
     await sb.from('submissions').update({section_progress:prog}).eq('id',sid); refreshBoard(ev); }; });
@@ -518,7 +534,21 @@ async function openSubmission(s){
   comments=(data||[]).map(c=>({id:'c'+c.id,page:c.page,rects:c.rects||[],quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai}));
   renderList(); drawAllHighlights();
 }
-$('#backCor').onclick=async()=>{ await saveNow(); selectEvaluation(cur.evaluation); };
+$('#backCor').onclick=async()=>{ await saveNow(); await askSectionProgress(); selectEvaluation(cur.evaluation); };
+function askSectionProgress(){
+  return new Promise(resolve=>{
+    const ev=cur.evaluation, sub=cur.submission;
+    if(!ev||!(ev.sections||[]).length||!sub){ resolve(); return; }
+    const prog=sub.section_progress||{};
+    $('#secDlgBody').innerHTML=(ev.sections||[]).map(s=>`<label style="display:flex;gap:9px;align-items:center;padding:7px 0;font-size:14px"><input type="checkbox" data-sec="${esc(s)}" ${prog[s]==='corregido'?'checked':''}> ${esc(s)}</label>`).join('');
+    const dlg=$('#secDlg');
+    $('#secDlgSave').onclick=async()=>{ const np={...prog};
+      $('#secDlgBody').querySelectorAll('input').forEach(inp=>{ const s=inp.dataset.sec; if(inp.checked) np[s]='corregido'; else delete np[s]; });
+      sub.section_progress=np; await sb.from('submissions').update({section_progress:np}).eq('id',sub.id); dlg.close(); resolve(); };
+    $('#secDlgSkip').onclick=()=>{ dlg.close(); resolve(); };
+    dlg.showModal();
+  });
+}
 
 /* ---- render PEREZOSO: solo dibuja páginas visibles ---- */
 async function renderAll(){
