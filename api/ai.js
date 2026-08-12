@@ -5,8 +5,8 @@
 //  variable de entorno (ANTHROPIC_API_KEY) que configuras en Vercel.
 // ============================================================
 
-// Si este modelo diera error, reemplázalo por el vigente que veas
-// en console.anthropic.com  (ej: claude-sonnet-4, claude-3-5-sonnet-latest, etc.)
+// Modelo vigente. Haiku es rápido y barato, ideal para pulir comentarios.
+// Si quieres más calidad puedes cambiarlo por 'claude-sonnet-5'.
 const MODEL = 'claude-haiku-4-5-20251001';
 
 export default async function handler(req, res) {
@@ -29,9 +29,11 @@ export default async function handler(req, res) {
       system =
         'Eres un asistente que ayuda a un profesor a pulir la redacción de un comentario de ' +
         'retroalimentación para un estudiante. El comentario fue dictado por voz, así que puede ' +
-        'tener muletillas (eee, mmm, o sea), repeticiones o frases sueltas. Devuelve EXACTAMENTE ' +
-        'el mismo comentario reescrito de forma clara, profesional y concisa, conservando la idea, ' +
-        'el tono y el criterio del profesor. No agregues contenido nuevo, no cambies el fondo, no ' +
+        'tener muletillas (eee, mmm, o sea), repeticiones o frases sueltas. Devuelve el mismo ' +
+        'comentario reescrito de forma clara, profesional y concisa, conservando la idea, el tono ' +
+        'y el criterio del profesor. Si el profesor repite la MISMA idea varias veces, condénsala ' +
+        'en UNA sola formulación clara (no la repitas); elimina redundancias, pero conserva todas ' +
+        'las ideas realmente distintas. No agregues contenido nuevo, no cambies el fondo, no ' +
         'suavices ni endurezcas la crítica. Responde SOLO con el comentario reescrito, sin comillas ' +
         'ni explicaciones.';
       user =
@@ -41,12 +43,13 @@ export default async function handler(req, res) {
     } else if (mode === 'consolidate') {
       // Redactar el párrafo-resumen final para el alumno
       system =
-        'Eres un asistente que ayuda a un profesor a redactar la retroalimentación final para un ' +
-        'estudiante, a partir de la lista de comentarios que el profesor hizo sobre partes ' +
-        'específicas de su trabajo. Escribe un párrafo introductorio breve (2 a 4 frases), cálido ' +
-        'pero honesto, que resuma las fortalezas y los principales puntos a mejorar según esos ' +
-        'comentarios. Dirígete al estudiante de tú. No inventes nada que no esté en los comentarios. ' +
-        'Responde SOLO con el párrafo, sin títulos ni comillas.';
+        'Tu tarea es CONSOLIDAR y ordenar en un texto breve ÚNICAMENTE las observaciones que el ' +
+        'profesor ya escribió sobre el trabajo del estudiante. Reglas estrictas: NO agregues ' +
+        'opiniones, elogios ni aspectos positivos que el profesor no haya mencionado explícitamente; ' +
+        'NO suavices ni endurezcas; NO inventes absolutamente nada. Si el profesor solo señaló ' +
+        'problemas, el resumen refleja solo esos problemas. Escribe 1 a 3 frases que sinteticen con ' +
+        'fidelidad lo que el profesor dijo, dirigiéndote al estudiante de tú. Responde SOLO con el ' +
+        'texto, sin títulos ni comillas.';
       const lista = (comments || [])
         .map((c) => `- (sobre "${c.quote}") ${c.text}`)
         .join('\n');
