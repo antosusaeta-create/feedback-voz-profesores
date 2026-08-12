@@ -20,6 +20,7 @@
   button.sm{padding:5px 9px;font-size:12px}
   button:disabled{opacity:.5;cursor:not-allowed}
   input,select{font-family:inherit;font-size:14px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;width:100%}
+  input[type=checkbox],input[type=radio]{width:auto;padding:0;margin:0}
 
   #auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
   .authbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.06)}
@@ -107,9 +108,11 @@
   .row-item:hover{border-color:var(--accent)}
   .row-item .nm{font-weight:550;cursor:pointer}
   .status{font-size:11px;padding:2px 8px;border-radius:20px}
-  .status.pendiente{background:#fef3c7;color:#92400e}
-  .status.corregido{background:#dbeafe;color:#1e40af}
-  .status.enviado{background:#dcfce7;color:#166534}
+  .status.pendiente{background:#fee2e2;color:#991b1b}
+  .status.en_progreso{background:#fef3c7;color:#92400e}
+  .status.corregido{background:#dcfce7;color:#166534}
+  .status.enviado{background:#dbeafe;color:#1e40af}
+  .light{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
   .welcome{text-align:center;color:var(--muted);padding:70px 20px}
   .welcome i{font-size:40px}
 
@@ -215,11 +218,32 @@
 
 <input type="file" id="quickFile" accept=".pdf" hidden>
 
+<dialog id="colDlg">
+  <div class="dlg-head"><h3 id="colTitle" style="margin:0;font-size:15px">Colaboradores</h3><button id="colClose" class="sm" style="margin-left:auto">Cerrar</button></div>
+  <div class="dlg-body">
+    <p class="hint">Invita por correo a alguien que ya tenga cuenta en la app. Verá esta evaluación en "Compartidas conmigo" y podrán corregir juntos.</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px"><input id="colEmail" type="email" placeholder="correo@ejemplo.com"><button id="colAdd" class="primary sm">Invitar</button></div>
+    <div id="colList"></div>
+  </div>
+</dialog>
+
 <dialog id="secDlg">
   <div class="dlg-head"><h3 style="margin:0;font-size:15px">¿Qué corregiste de esta entrega?</h3></div>
   <div class="dlg-body"><p class="hint">Marca las secciones que dejaste corregidas. Queda guardado en el tablero.</p><div id="secDlgBody"></div></div>
   <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
     <button id="secDlgSkip" class="sm">Ahora no</button><button id="secDlgSave" class="primary sm">Guardar avance</button></div>
+</dialog>
+
+<dialog id="doneDlg">
+  <div class="dlg-head"><h3 style="margin:0;font-size:15px">¿Corrección terminada?</h3></div>
+  <div class="dlg-body">
+    <p class="hint">¿Cómo dejaste esta entrega?</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button id="dnDone" class="sm" style="justify-content:flex-start;padding:11px 14px"><span class="light" style="background:#059669"></span> Sí, terminada</button>
+      <button id="dnPartial" class="sm" style="justify-content:flex-start;padding:11px 14px"><span class="light" style="background:#f59e0b"></span> Falta (ya la empecé)</button>
+      <button id="dnNone" class="sm" style="justify-content:flex-start;padding:11px 14px"><span class="light" style="background:#dc2626"></span> No alcancé a comenzar</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="reportDlg">
@@ -245,7 +269,9 @@ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudf
 const $=s=>document.querySelector(s);
 let user=null;
 let cur={course:null,evaluation:null,submission:null};
-let courses=[], categories=[], evalCache={}, expanded={};
+let courses=[], categories=[], sharedEvals=[], evalCache={}, expanded={};
+function isDone(v){ return v==='corregido' || (v&&typeof v==='object'&&v.done); }
+function shortMail(e){ return (e||'').split('@')[0]; }
 
 /* ---------------- AUTH ---------------- */
 function authMsg(t,ok){ const m=$('#authMsg'); m.className='msg '+(ok?'ok':'err'); m.textContent=t; }
@@ -260,7 +286,14 @@ sb.auth.onAuthStateChange((_e,session)=>{ user=session?.user||null;
 /* ---------------- ARRANQUE ---------------- */
 async function boot(){
   const [cats,cos]=await Promise.all([ sb.from('categories').select('*').order('created_at'), sb.from('courses').select('*').order('created_at') ]);
-  categories=cats.data||[]; courses=cos.data||[]; applySb(); renderSidebar(); showWelcome();
+  categories=cats.data||[]; courses=cos.data||[]; sharedEvals=await loadSharedEvals(); applySb(); renderSidebar(); showWelcome();
+}
+async function loadSharedEvals(){
+  const {data}=await sb.from('collaborators').select('evaluation_id,owner');
+  const ids=[...new Set((data||[]).filter(r=>r.owner!==user.id).map(r=>r.evaluation_id))];
+  if(!ids.length) return [];
+  const {data:evs}=await sb.from('evaluations').select('*').in('id',ids);
+  return evs||[];
 }
 function applySb(){ $('#shell').classList.toggle('nosb', localStorage.getItem('sbHidden')==='1'); }
 $('#toggleSb').onclick=()=>{ const h=localStorage.getItem('sbHidden')==='1'; localStorage.setItem('sbHidden',h?'0':'1'); applySb(); };
@@ -295,6 +328,14 @@ function renderSidebar(){
       el.appendChild(mk('div','sb-add','＋ curso',()=>newCourse(cat.id)));
     }
   });
+  if(sharedEvals.length){
+    const key='cat_shared'; if(expanded[key]===undefined) expanded[key]=true;
+    const head=mk('div','sb-cat',''); head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">COMPARTIDAS CONMIGO</span>`;
+    head.onclick=()=>{expanded[key]=!expanded[key];renderSidebar();};
+    el.appendChild(head);
+    if(expanded[key]) sharedEvals.forEach(ev=>{ const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
+      er.innerHTML=`🤝 <span class="nm">${esc(ev.name)}</span>`; er.onclick=()=>selectEvaluation(ev); el.appendChild(er); });
+  }
 }
 function renderCourseNode(el,co){
   const isSel=cur.course&&cur.course.id===co.id;
@@ -343,12 +384,32 @@ function renderEvaluationsMain(co){
   const g=$('#g');
   (evalCache[co.id]||[]).forEach(ev=>{
     const el=mk('div','cardi','');
-    el.innerHTML=`<span class="x">✕</span><h3>📝 ${esc(ev.name)}</h3><div class="meta"><span class="pill">${ev.type==='control'?'Control · varios alumnos':'Ensayo/Tesis'}</span></div>`;
+    el.innerHTML=`<span class="x">✕</span><h3>📝 ${esc(ev.name)}</h3>
+      <div class="meta"><span class="pill">${ev.type==='control'?'Control · varios alumnos':'Ensayo/Tesis'}</span></div>
+      <div class="meta" id="prog-${ev.id}" style="margin-top:7px"><span class="light" style="background:#9ca3af"></span>cargando…</div>`;
     el.onclick=(e)=>{ if(!e.target.classList.contains('x')) selectEvaluation(ev); };
     el.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();renderEvaluationsMain(co);});};
     g.appendChild(el);
   });
   const nc=mk('div','cardi newcard','＋ Nueva evaluación',()=>newEvaluation(co)); g.appendChild(nc);
+  loadEvalProgress(co);
+}
+async function loadEvalProgress(co){
+  const evs=evalCache[co.id]||[]; if(!evs.length) return;
+  const {data}=await sb.from('submissions').select('id,evaluation_id,status,section_progress').in('evaluation_id',evs.map(e=>e.id));
+  evs.forEach(ev=>{ const el=document.getElementById('prog-'+ev.id); if(!el)return;
+    const {pct,color,txt}=evalProgress(ev,(data||[]).filter(s=>s.evaluation_id===ev.id));
+    el.innerHTML=`<span class="light" style="background:${color}"></span>${txt}`; });
+}
+function evalProgress(ev,subs){
+  const secs=ev.sections||[];
+  if(!subs.length) return {pct:0,color:'#9ca3af',txt:'sin entregas'};
+  let done,total;
+  if(secs.length){ total=subs.length*secs.length; done=0; subs.forEach(s=>{ const p=s.section_progress||{}; secs.forEach(sec=>{ if(isDone(p[sec]))done++; }); }); }
+  else { total=subs.length; done=subs.filter(s=>s.status==='corregido').length; }
+  const pct=total?Math.round(100*done/total):0;
+  const color=pct===0?'#dc2626':pct>=100?'#059669':'#f59e0b';
+  return {pct,color,txt:pct+'% corregido'};
 }
 
 /* ---------------- MAIN: ENTREGAS ---------------- */
@@ -357,12 +418,14 @@ async function renderSubmissionsMain(ev){
   v.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap">
       <h2 class="title" style="margin:0">${esc(ev.name)}</h2>
       <button id="metBtn" class="sm">📊 Métricas</button>
-      <button id="secBtn" class="sm">⚙️ Secciones</button></div>
+      <button id="secBtn" class="sm">⚙️ Secciones</button>
+      <button id="colBtn" class="sm">👥 Colaboradores</button></div>
     <p class="hint">Sube los PDF de los alumnos. Cada uno es una entrega.</p>
     <div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir (puedes varios).</div>
     <div id="subs"><p class="hint">Cargando…</p></div>`;
   $('#metBtn').onclick=()=>renderMetricsMain(ev);
   $('#secBtn').onclick=()=>editSections(ev);
+  $('#colBtn').onclick=()=>openCollab(ev);
   const drop=$('#drop');
   drop.onclick=()=>pickFiles(ev);
   drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
@@ -390,23 +453,48 @@ function renderSecChips(ev){ const box=$('#secChips'); if(!box)return; box.inner
     c.querySelector('span').onclick=async()=>{ ev.sections.splice(i,1); await saveSections(ev); renderSecChips(ev); }; box.appendChild(c); }); }
 async function saveSections(ev){ await sb.from('evaluations').update({sections:ev.sections||[]}).eq('id',ev.id); }
 async function refreshBoard(ev){
-  const {data}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
   const box=$('#subs'); if(!box)return; const secs=ev.sections||[];
-  if(!(data||[]).length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
+  const [subsRes,cbsRes]=await Promise.all([
+    sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at'),
+    sb.from('collaborators').select('user_email').eq('evaluation_id',ev.id)
+  ]);
+  const data=subsRes.data||[];
+  const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
+  const assign=ev.section_assignments||{};
+  if(!data.length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
   let done=0; const total=data.length*secs.length; let rows='';
   data.forEach(s=>{ const prog=s.section_progress||{}; rows+='<tr><td class="nm">'+esc(s.student_name||'Entrega')+'</td>';
-    secs.forEach(sec=>{ const on=prog[sec]==='corregido'; if(on)done++; rows+=`<td class="cell" data-sub="${s.id}" data-sec="${esc(sec)}"><span class="bdot${on?' done':''}">✓</span></td>`; });
+    secs.forEach(sec=>{ const on=isDone(prog[sec]); if(on)done++; const who=assign[sec];
+      const tag=who?`<div style="font-size:9px;color:var(--muted);margin-top:2px">${esc(shortMail(who))}</div>`:'';
+      rows+=`<td class="cell" data-sub="${s.id}" data-sec="${esc(sec)}"><span class="bdot${on?' done':''}">✓</span>${tag}</td>`; });
     rows+='<td><button class="bopen open" data-sub="'+s.id+'">Corregir →</button></td></tr>'; });
   const pct=total?Math.round(100*done/total):0;
+  const heads=secs.map(sec=>{ const c=assign[sec]||'';
+    const opts=['<option value="">— asignar —</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${c===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
+    return `<th>${esc(sec)}<br><select class="asignCol" data-sec="${esc(sec)}" style="font-size:10px;padding:2px;margin-top:4px;width:auto">${opts}</select></th>`; }).join('');
   box.innerHTML=`<div style="font-size:13px;color:var(--muted)">Avance <b style="color:var(--ink)">${done}/${total}</b> · ${pct}%</div>
     <div class="pbar"><div style="width:${pct}%"></div></div>
-    <div style="overflow-x:auto"><table class="board"><thead><tr><th style="text-align:left">Alumno</th>${secs.map(s=>'<th>'+esc(s)+'</th>').join('')}<th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin-top:8px">Haz clic en un círculo para marcarlo, o márcalos en el popup al salir de cada corrección.</p>`;
+    <div style="overflow-x:auto"><table class="board"><thead><tr><th style="text-align:left">Alumno</th>${heads}<th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin-top:8px">Asigna cada sección a alguien en el encabezado. Marca los círculos o usa el popup al salir de una corrección.</p>`;
+  box.querySelectorAll('.asignCol').forEach(sel=>{ sel.onchange=async()=>{ const na={...assign}; if(sel.value) na[sel.dataset.sec]=sel.value; else delete na[sel.dataset.sec];
+    ev.section_assignments=na; await sb.from('evaluations').update({section_assignments:na}).eq('id',ev.id); refreshBoard(ev); }; });
   box.querySelectorAll('.cell').forEach(td=>{ td.onclick=async()=>{ const sid=td.dataset.sub,sec=td.dataset.sec; const sObj=data.find(x=>x.id===sid); const prog=sObj.section_progress||{};
-    if(prog[sec]==='corregido') delete prog[sec]; else prog[sec]='corregido'; sObj.section_progress=prog;
+    if(isDone(prog[sec])) delete prog[sec]; else prog[sec]={done:true,by:user.email}; sObj.section_progress=prog;
     await sb.from('submissions').update({section_progress:prog}).eq('id',sid); refreshBoard(ev); }; });
   box.querySelectorAll('.open').forEach(b=>{ b.onclick=()=>openSubmission(data.find(x=>x.id===b.dataset.sub)); });
 }
+async function openCollab(ev){
+  $('#colTitle').textContent='Colaboradores · '+ev.name;
+  await renderCollabList(ev); $('#colDlg').showModal();
+  $('#colAdd').onclick=async()=>{ const em=$('#colEmail').value.trim().toLowerCase(); if(!em)return;
+    const {error}=await sb.from('collaborators').insert({evaluation_id:ev.id,user_email:em}); if(error){alert(error.message);return;}
+    $('#colEmail').value=''; renderCollabList(ev); };
+}
+$('#colClose').onclick=()=>$('#colDlg').close();
+async function renderCollabList(ev){ const {data}=await sb.from('collaborators').select('*').eq('evaluation_id',ev.id);
+  const box=$('#colList'); box.innerHTML=(data||[]).length?'':'<p class="hint">Nadie invitado aún.</p>';
+  (data||[]).forEach(c=>{ const row=mk('div','row-item',''); row.innerHTML=`<span>🤝 ${esc(c.user_email)}</span><button class="sm" style="margin-left:auto">Quitar</button>`;
+    row.querySelector('button').onclick=async()=>{ await sb.from('collaborators').delete().eq('id',c.id); renderCollabList(ev); }; box.appendChild(row); }); }
 async function refreshSubs(ev){
   const {data}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
   const subs=$('#subs'); if(!subs)return; subs.innerHTML='';
@@ -414,7 +502,7 @@ async function refreshSubs(ev){
   data.forEach(s=>{
     const el=mk('div','row-item','');
     el.innerHTML=`<span style="font-size:18px">🧑‍🎓</span><span class="nm">${esc(s.student_name||'Entrega')}</span>
-      <span class="status ${s.status}">${s.status}</span>
+      <span class="status ${s.status}">${statusLabel(s.status)}</span>
       <span style="margin-left:auto;display:flex;gap:6px">
         <button class="sm open">Corregir</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button></span>`;
     el.querySelector('.open').onclick=()=>openSubmission(s);
@@ -534,19 +622,25 @@ async function openSubmission(s){
   comments=(data||[]).map(c=>({id:'c'+c.id,page:c.page,rects:c.rects||[],quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai}));
   renderList(); drawAllHighlights();
 }
-$('#backCor').onclick=async()=>{ await saveNow(); await askSectionProgress(); selectEvaluation(cur.evaluation); };
-function askSectionProgress(){
+$('#backCor').onclick=async()=>{ await saveNow(); await askProgress(); selectEvaluation(cur.evaluation); };
+function askProgress(){
   return new Promise(resolve=>{
-    const ev=cur.evaluation, sub=cur.submission;
-    if(!ev||!(ev.sections||[]).length||!sub){ resolve(); return; }
-    const prog=sub.section_progress||{};
-    $('#secDlgBody').innerHTML=(ev.sections||[]).map(s=>`<label style="display:flex;gap:9px;align-items:center;padding:7px 0;font-size:14px"><input type="checkbox" data-sec="${esc(s)}" ${prog[s]==='corregido'?'checked':''}> ${esc(s)}</label>`).join('');
-    const dlg=$('#secDlg');
-    $('#secDlgSave').onclick=async()=>{ const np={...prog};
-      $('#secDlgBody').querySelectorAll('input').forEach(inp=>{ const s=inp.dataset.sec; if(inp.checked) np[s]='corregido'; else delete np[s]; });
-      sub.section_progress=np; await sb.from('submissions').update({section_progress:np}).eq('id',sub.id); dlg.close(); resolve(); };
-    $('#secDlgSkip').onclick=()=>{ dlg.close(); resolve(); };
-    dlg.showModal();
+    const ev=cur.evaluation, sub=cur.submission; if(!ev||!sub){ resolve(); return; }
+    if((ev.sections||[]).length){
+      const prog=sub.section_progress||{};
+      $('#secDlgBody').innerHTML=(ev.sections||[]).map(s=>`<label style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;font-size:14px;cursor:pointer"><input type="checkbox" data-sec="${esc(s)}" ${isDone(prog[s])?'checked':''}> ${esc(s)}</label>`).join('');
+      const dlg=$('#secDlg');
+      $('#secDlgSave').onclick=async()=>{ const np={...prog};
+        $('#secDlgBody').querySelectorAll('input').forEach(inp=>{ const s=inp.dataset.sec; if(inp.checked) np[s]={done:true,by:user.email}; else delete np[s]; });
+        sub.section_progress=np; await sb.from('submissions').update({section_progress:np}).eq('id',sub.id); dlg.close(); resolve(); };
+      $('#secDlgSkip').onclick=()=>{ dlg.close(); resolve(); };
+      dlg.showModal();
+    } else {
+      const dlg=$('#doneDlg');
+      const set=async(st)=>{ sub.status=st; await sb.from('submissions').update({status:st}).eq('id',sub.id); dlg.close(); resolve(); };
+      $('#dnDone').onclick=()=>set('corregido'); $('#dnPartial').onclick=()=>set('en_progreso'); $('#dnNone').onclick=()=>set('pendiente');
+      dlg.showModal();
+    }
   });
 }
 
@@ -714,6 +808,7 @@ async function aiCall(payload){ const r=await fetch(API_BASE+'/api/ai',{method:'
   const d=await r.json().catch(()=>({})); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d.text; }
 async function del(table,id,msg,then){ if(!confirm(msg))return; const {error}=await sb.from(table).delete().eq('id',id); if(error)alert(error.message); else then(); }
 function mk(tag,cls,txt,onclick){ const e=document.createElement(tag); e.className=cls; if(txt)e.textContent=txt; if(onclick)e.onclick=onclick; return e; }
+function statusLabel(s){ return ({pendiente:'pendiente',en_progreso:'en progreso',corregido:'corregido',enviado:'enviado'})[s]||s; }
 function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
 sb.auth.getSession();
