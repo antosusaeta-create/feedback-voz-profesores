@@ -55,8 +55,25 @@ export default async function handler(req, res) {
         .join('\n');
       user = `Trabajo: ${doc || 'ensayo del alumno'}.\n\nComentarios del profesor:\n${lista}`;
 
+    } else if (mode === 'metrics') {
+      // Analiza comentarios de varios alumnos y detecta temas que se repiten
+      system =
+        'Eres un asistente que analiza los comentarios de un profesor sobre los trabajos de varios ' +
+        'estudiantes en una MISMA evaluación, para detectar TEMAS que se repiten entre alumnos. ' +
+        'Recibes: (1) una lista de temas que el profesor ya definió y quiere medir, y (2) los ' +
+        'comentarios agrupados por alumno. Mide en cuántos alumnos DISTINTOS aparece cada tema del ' +
+        'profesor, y además detecta hasta 4 temas recurrentes adicionales que veas en los ' +
+        'comentarios. No inventes temas sin respaldo. Responde ÚNICAMENTE con JSON válido, sin texto ' +
+        'ni explicación fuera del JSON, con esta forma exacta: ' +
+        '{"themes":[{"label":"nombre corto","students":<entero>,"source":"profesor"|"ia"}]}. ' +
+        'Ordena de mayor a menor por "students".';
+      const lista = (comments || [])
+        .map((s) => `# ${s.name}\n` + (s.comments || []).map((c) => '- ' + c).join('\n'))
+        .join('\n\n');
+      user = 'Temas del profesor: ' + JSON.stringify(text || []) + '\n\nComentarios por alumno:\n' + lista;
+
     } else {
-      return res.status(400).json({ error: 'mode debe ser "optimize" o "consolidate"' });
+      return res.status(400).json({ error: 'mode desconocido' });
     }
 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
