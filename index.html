@@ -272,6 +272,8 @@ let cur={course:null,evaluation:null,submission:null};
 let courses=[], categories=[], sharedEvals=[], evalCache={}, expanded={};
 function isDone(v){ return v==='corregido' || (v&&typeof v==='object'&&v.done); }
 function shortMail(e){ return (e||'').split('@')[0]; }
+function trafficColor(p){ return p<20?'#dc2626':p<50?'#f97316':p<80?'#f59e0b':'#059669'; }
+function statusColor(st){ return (st==='corregido'||st==='enviado')?'#059669':st==='en_progreso'?'#f59e0b':'#dc2626'; }
 
 /* ---------------- AUTH ---------------- */
 function authMsg(t,ok){ const m=$('#authMsg'); m.className='msg '+(ok?'ok':'err'); m.textContent=t; }
@@ -408,8 +410,7 @@ function evalProgress(ev,subs){
   if(secs.length){ total=subs.length*secs.length; done=0; subs.forEach(s=>{ const p=s.section_progress||{}; secs.forEach(sec=>{ if(isDone(p[sec]))done++; }); }); }
   else { total=subs.length; done=subs.filter(s=>s.status==='corregido').length; }
   const pct=total?Math.round(100*done/total):0;
-  const color=pct===0?'#dc2626':pct>=100?'#059669':'#f59e0b';
-  return {pct,color,txt:pct+'% corregido'};
+  return {pct,color:trafficColor(pct),txt:pct+'% corregido'};
 }
 
 /* ---------------- MAIN: ENTREGAS ---------------- */
@@ -463,21 +464,28 @@ async function refreshBoard(ev){
   const assign=ev.section_assignments||{};
   if(!data.length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
   let done=0; const total=data.length*secs.length; let rows='';
-  data.forEach(s=>{ const prog=s.section_progress||{}; rows+='<tr><td class="nm">'+esc(s.student_name||'Entrega')+'</td>';
-    secs.forEach(sec=>{ const on=isDone(prog[sec]); if(on)done++; const who=assign[sec];
+  data.forEach(s=>{ const prog=s.section_progress||{};
+    let sdone=0; secs.forEach(sec=>{ if(isDone(prog[sec]))sdone++; }); done+=sdone;
+    const spct=secs.length?Math.round(100*sdone/secs.length):0;
+    const rowOpts=['<option value="">—</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${s.assignee===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
+    rows+=`<tr><td><span class="light" style="background:${trafficColor(spct)}"></span>${spct}%</td><td class="nm">${esc(s.student_name||'Entrega')}</td>`;
+    secs.forEach(sec=>{ const on=isDone(prog[sec]); const who=assign[sec]||s.assignee;
       const tag=who?`<div style="font-size:9px;color:var(--muted);margin-top:2px">${esc(shortMail(who))}</div>`:'';
       rows+=`<td class="cell" data-sub="${s.id}" data-sec="${esc(sec)}"><span class="bdot${on?' done':''}">✓</span>${tag}</td>`; });
-    rows+='<td><button class="bopen open" data-sub="'+s.id+'">Corregir →</button></td></tr>'; });
+    rows+=`<td><select class="asgRow" data-sub="${s.id}" style="width:auto;font-size:11px;padding:3px">${rowOpts}</select></td>`;
+    rows+=`<td><button class="bopen open" data-sub="${s.id}">Corregir →</button></td></tr>`; });
   const pct=total?Math.round(100*done/total):0;
   const heads=secs.map(sec=>{ const c=assign[sec]||'';
     const opts=['<option value="">— asignar —</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${c===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
     return `<th>${esc(sec)}<br><select class="asignCol" data-sec="${esc(sec)}" style="font-size:10px;padding:2px;margin-top:4px;width:auto">${opts}</select></th>`; }).join('');
-  box.innerHTML=`<div style="font-size:13px;color:var(--muted)">Avance <b style="color:var(--ink)">${done}/${total}</b> · ${pct}%</div>
-    <div class="pbar"><div style="width:${pct}%"></div></div>
-    <div style="overflow-x:auto"><table class="board"><thead><tr><th style="text-align:left">Alumno</th>${heads}<th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin-top:8px">Asigna cada sección a alguien en el encabezado. Marca los círculos o usa el popup al salir de una corrección.</p>`;
+  box.innerHTML=`<div style="font-size:13px;color:var(--muted)"><span class="light" style="background:${trafficColor(pct)}"></span>Avance <b style="color:var(--ink)">${done}/${total}</b> · ${pct}%</div>
+    <div class="pbar"><div style="width:${pct}%;background:${trafficColor(pct)}"></div></div>
+    <div style="overflow-x:auto"><table class="board"><thead><tr><th>Estado</th><th style="text-align:left">Alumno</th>${heads}<th>Responsable</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin-top:8px">Reparte por <b>sección</b> (encabezado) o por <b>alumno</b> (columna Responsable). Marca los círculos o usa el popup al salir.</p>`;
   box.querySelectorAll('.asignCol').forEach(sel=>{ sel.onchange=async()=>{ const na={...assign}; if(sel.value) na[sel.dataset.sec]=sel.value; else delete na[sel.dataset.sec];
     ev.section_assignments=na; await sb.from('evaluations').update({section_assignments:na}).eq('id',ev.id); refreshBoard(ev); }; });
+  box.querySelectorAll('.asgRow').forEach(sel=>{ sel.onchange=async()=>{ const sObj=data.find(x=>x.id===sel.dataset.sub); sObj.assignee=sel.value||null;
+    await sb.from('submissions').update({assignee:sObj.assignee}).eq('id',sObj.id); refreshBoard(ev); }; });
   box.querySelectorAll('.cell').forEach(td=>{ td.onclick=async()=>{ const sid=td.dataset.sub,sec=td.dataset.sec; const sObj=data.find(x=>x.id===sid); const prog=sObj.section_progress||{};
     if(isDone(prog[sec])) delete prog[sec]; else prog[sec]={done:true,by:user.email}; sObj.section_progress=prog;
     await sb.from('submissions').update({section_progress:prog}).eq('id',sid); refreshBoard(ev); }; });
@@ -496,15 +504,25 @@ async function renderCollabList(ev){ const {data}=await sb.from('collaborators')
   (data||[]).forEach(c=>{ const row=mk('div','row-item',''); row.innerHTML=`<span>🤝 ${esc(c.user_email)}</span><button class="sm" style="margin-left:auto">Quitar</button>`;
     row.querySelector('button').onclick=async()=>{ await sb.from('collaborators').delete().eq('id',c.id); renderCollabList(ev); }; box.appendChild(row); }); }
 async function refreshSubs(ev){
-  const {data}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
+  const [subsRes,cbsRes]=await Promise.all([
+    sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at'),
+    sb.from('collaborators').select('user_email').eq('evaluation_id',ev.id)
+  ]);
+  const data=subsRes.data||[];
+  const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
   const subs=$('#subs'); if(!subs)return; subs.innerHTML='';
-  if(!(data||[]).length){ subs.innerHTML='<p class="hint">Aún no hay entregas. Sube el primer PDF arriba.</p>'; return; }
+  if(!data.length){ subs.innerHTML='<p class="hint">Aún no hay entregas. Sube el primer PDF arriba.</p>'; return; }
   data.forEach(s=>{
     const el=mk('div','row-item','');
-    el.innerHTML=`<span style="font-size:18px">🧑‍🎓</span><span class="nm">${esc(s.student_name||'Entrega')}</span>
+    const opts=['<option value="">— responsable —</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${s.assignee===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
+    el.innerHTML=`<span class="light lightbtn" title="clic para cambiar estado" style="background:${statusColor(s.status)};cursor:pointer;width:13px;height:13px"></span>
+      <span class="nm">${esc(s.student_name||'Entrega')}</span>
       <span class="status ${s.status}">${statusLabel(s.status)}</span>
-      <span style="margin-left:auto;display:flex;gap:6px">
+      <select class="asg" style="width:auto;font-size:12px;padding:5px 7px;margin-left:auto">${opts}</select>
+      <span style="display:flex;gap:6px">
         <button class="sm open">Corregir</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button></span>`;
+    el.querySelector('.lightbtn').onclick=async()=>{ const order=['pendiente','en_progreso','corregido']; const nx=order[(order.indexOf(s.status)+1)%3]; s.status=nx; await sb.from('submissions').update({status:nx}).eq('id',s.id); refreshSubs(ev); };
+    el.querySelector('.asg').onchange=async(e)=>{ s.assignee=e.target.value||null; await sb.from('submissions').update({assignee:s.assignee}).eq('id',s.id); };
     el.querySelector('.open').onclick=()=>openSubmission(s);
     el.querySelector('.nm').onclick=()=>openSubmission(s);
     el.querySelector('.rename').onclick=async()=>{ const n=prompt('Nombre del alumno:',s.student_name||''); if(n===null)return; await sb.from('submissions').update({student_name:n}).eq('id',s.id); refreshSubs(ev); };
