@@ -3,568 +3,483 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Asistente de Feedback por Voz — Prototipo</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<title>Asistente de Feedback por Voz</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  :root{
-    --bg:#f6f7f9; --panel:#ffffff; --ink:#1d2430; --muted:#6b7280;
-    --line:#e5e7eb; --accent:#4f46e5; --accent-soft:#eef2ff;
-    --hl:#fde68a; --hl-active:#fbbf24; --ok:#059669; --danger:#dc2626;
-  }
+  :root{--bg:#f6f7f9;--panel:#fff;--ink:#1d2430;--muted:#6b7280;--line:#e5e7eb;
+        --accent:#4f46e5;--accent-soft:#eef2ff;--hl:rgba(251,191,36,.4);--hl-active:rgba(251,191,36,.75);
+        --danger:#dc2626;--ok:#059669}
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-       background:var(--bg);color:var(--ink);line-height:1.5}
-  header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 22px;
-         display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10;flex-wrap:wrap}
-  header h1{font-size:16px;margin:0;font-weight:650}
-  header .tag{font-size:11px;background:var(--accent-soft);color:var(--accent);
-              padding:3px 8px;border-radius:20px;font-weight:600}
-  .bar{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-  button{font-family:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);
-          color:var(--ink);padding:8px 13px;border-radius:8px;cursor:pointer;font-weight:550;transition:.15s}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+  button{font-family:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 13px;border-radius:8px;cursor:pointer;font-weight:550;transition:.15s}
   button:hover{border-color:var(--accent);color:var(--accent)}
   button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
   button.primary:hover{background:#4338ca;color:#fff}
   button.rec{background:var(--danger);color:#fff;border-color:var(--danger)}
-  button:disabled{opacity:.45;cursor:not-allowed}
-  button.ghost{border-style:dashed;color:var(--muted)}
+  button.sm{padding:5px 9px;font-size:12px}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  input,select{font-family:inherit;font-size:14px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;width:100%}
+  a.link{color:var(--accent);cursor:pointer;font-size:13px}
 
-  /* Pestañas */
-  #tabs{display:flex;gap:6px;align-items:center;padding:10px 22px 0;flex-wrap:wrap;background:var(--bg)}
-  .tab{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);
-       border-bottom:none;border-radius:9px 9px 0 0;padding:8px 12px;font-size:13px;cursor:pointer;max-width:230px}
-  .tab.active{border-color:var(--accent);color:var(--accent);font-weight:600;box-shadow:0 -2px 0 var(--accent) inset}
-  .tab .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .tab .cnt{font-size:10px;background:var(--accent-soft);color:var(--accent);border-radius:20px;padding:1px 6px}
-  .tab .x{color:var(--muted);font-weight:700}
-  .tab .x:hover{color:var(--danger)}
-  .tab.add{border:1px dashed var(--line);color:var(--muted);border-radius:9px;background:transparent}
+  /* ---- Login ---- */
+  #auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .authbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.06)}
+  .authbox h1{font-size:20px;margin:0 0 4px}
+  .authbox p.sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+  .authbox label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin:12px 0 4px}
+  .msg{font-size:12.5px;padding:9px 11px;border-radius:8px;margin-top:12px;display:none}
+  .msg.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;display:block}
+  .msg.ok{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;display:block}
 
-  main{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;padding:0 22px 18px;max-width:1500px;margin:0 auto}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:0 12px 12px 12px;overflow:hidden}
-  .card.right{border-radius:12px}
-  .card h2{font-size:13px;margin:0;padding:12px 16px;border-bottom:1px solid var(--line);
-           color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;
-           display:flex;align-items:center;gap:8px}
-  #doc{padding:20px 22px;min-height:420px;font-size:15px;outline:none}
-  #doc p{margin:0 0 14px}
-  #doc[contenteditable="true"]{background:#fffdf7}
-  .hl{background:var(--hl);border-radius:3px;padding:1px 0;cursor:pointer;transition:.15s}
-  .hl.active{background:var(--hl-active)}
-  .hint{font-size:12px;color:var(--muted);padding:10px 16px;border-top:1px solid var(--line);background:#fafafa}
+  /* ---- App shell ---- */
+  #app{display:none;min-height:100vh}
+  .topbar{background:var(--panel);border-bottom:1px solid var(--line);padding:11px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20}
+  .brand{font-size:14px;font-weight:650}
+  .crumbs{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .crumbs b{color:var(--ink)}
+  .crumbs .c{cursor:pointer}.crumbs .c:hover{color:var(--accent)}
+  .right{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted)}
+  .content{max-width:1100px;margin:0 auto;padding:24px 20px}
+  .content.wide{max-width:1500px}
+  h2.title{font-size:18px;margin:0 0 2px}
+  p.hint{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .cardi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer;transition:.15s;position:relative}
+  .cardi:hover{border-color:var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.05)}
+  .cardi h3{margin:0 0 4px;font-size:15px}
+  .cardi .meta{font-size:12px;color:var(--muted)}
+  .cardi .x{position:absolute;top:8px;right:10px;color:var(--muted);font-size:14px;opacity:0}
+  .cardi:hover .x{opacity:1}.cardi .x:hover{color:var(--danger)}
+  .newcard{border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600;min-height:86px}
+  .newcard:hover{border-color:var(--accent);color:var(--accent)}
+  .pill{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+  .row-item{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .row-item:hover{border-color:var(--accent)}
+  .row-item .nm{font-weight:550;cursor:pointer}
+  .status{font-size:11px;padding:2px 8px;border-radius:20px}
+  .status.pendiente{background:#fef3c7;color:#92400e}
+  .status.corregido{background:#dbeafe;color:#1e40af}
+  .status.enviado{background:#dcfce7;color:#166534}
 
-  /* Dropzone */
-  #drop{border:2px dashed var(--line);border-radius:12px;margin:18px 22px;padding:40px;text-align:center;color:var(--muted);
-        max-width:1500px;background:var(--panel);cursor:pointer}
-  #drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
-  #drop b{color:var(--ink)}
-
-  #comments{padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-height:200px}
-  .empty{color:var(--muted);font-size:13px;text-align:center;padding:30px 10px}
-  .cmt{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff}
+  /* ---- Corrector ---- */
+  #corrector{display:none}
+  .cor-main{display:grid;grid-template-columns:1fr 360px;gap:16px;max-width:1500px;margin:0 auto;padding:14px 20px}
+  #viewer{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;max-height:82vh;overflow:auto}
+  .page{position:relative;margin:0 auto 16px;box-shadow:0 2px 12px rgba(0,0,0,.12);background:#fff}
+  .page canvas{display:block}
+  .textLayer{position:absolute;inset:0;overflow:hidden;line-height:1}
+  .textLayer span{position:absolute;color:transparent;white-space:pre;transform-origin:0 0;cursor:text}
+  .textLayer span::selection{background:rgba(79,70,229,.35)}
+  .hlLayer{position:absolute;inset:0;pointer-events:none}
+  .hlBox{position:absolute;background:var(--hl);border-radius:2px;pointer-events:auto;cursor:pointer}
+  .hlBox.active{background:var(--hl-active)}
+  .side{background:var(--panel);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:82vh}
+  .side h2{font-size:12px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .tools{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #list{padding:12px 14px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+  .cmt{border:1px solid var(--line);border-radius:10px;padding:10px}
   .cmt.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-  .cmt .quote{font-size:12px;color:var(--muted);border-left:3px solid var(--hl-active);
-              padding-left:8px;margin-bottom:8px;font-style:italic}
-  .cmt label.fld{font-size:11px;color:var(--muted);font-weight:600;display:block;margin:6px 0 3px}
-  .cmt textarea{width:100%;border:1px solid var(--line);border-radius:7px;padding:8px;
-                font-family:inherit;font-size:13.5px;resize:vertical;min-height:52px}
-  .cmt .ai{background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:8px;margin-top:8px}
-  .cmt .ai textarea{background:#fff}
-  .cmt .pick{display:flex;gap:12px;margin-top:8px;font-size:12px;flex-wrap:wrap}
-  .cmt .pick label{display:flex;gap:5px;align-items:center;cursor:pointer}
-  .cmt .row{display:flex;gap:8px;margin-top:8px;align-items:center}
-  .cmt .row .sp{margin-left:auto}
-  .cmt .del{color:var(--danger);border-color:transparent;padding:6px 8px}
-  .cmt .del:hover{border-color:var(--danger)}
-  .cmt .aiBtn{font-size:12px;padding:6px 10px;background:#7c3aed;color:#fff;border-color:#7c3aed}
-  .cmt .aiBtn:hover{background:#6d28d9;color:#fff}
-  .reclive{font-size:12px;color:var(--danger);font-weight:600;display:none;align-items:center;gap:6px}
+  .cmt .q{font-size:11px;color:var(--muted);font-style:italic;border-left:3px solid #fbbf24;padding-left:7px;margin-bottom:6px}
+  .cmt textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:7px;font-family:inherit;font-size:13px;resize:vertical;min-height:44px}
+  .cmt .ai{background:#f5f3ff;border:1px solid #ddd6fe;border-radius:7px;padding:7px;margin-top:7px}
+  .cmt .pick{display:flex;gap:10px;margin-top:6px;font-size:12px;flex-wrap:wrap}
+  .cmt .pick label{display:flex;gap:4px;align-items:center;cursor:pointer}
+  .cmt .r{display:flex;gap:6px;margin-top:6px;align-items:center}
+  .cmt .aiBtn{background:#7c3aed;color:#fff;border-color:#7c3aed;font-size:12px;padding:5px 9px}
+  .cmt .del{margin-left:auto;color:var(--danger);border-color:transparent;padding:5px 7px}
+  .reclive{font-size:12px;color:var(--danger);font-weight:600;display:none;gap:6px;align-items:center}
   .reclive.on{display:flex}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--danger);animation:pulse 1s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-  .toolbar{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .layers{display:flex;gap:14px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line);font-size:13px}
-  .layers label{display:flex;gap:6px;align-items:center;cursor:pointer}
-
-  dialog{border:none;border-radius:14px;padding:0;max-width:780px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:30px;text-align:center;color:var(--muted);cursor:pointer;margin-bottom:14px}
+  .drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  dialog{border:none;border-radius:14px;padding:0;max-width:720px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
   dialog::backdrop{background:rgba(15,23,42,.45)}
-  .dlg-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-  .dlg-head h3{margin:0;font-size:15px}
-  .dlg-body{padding:20px;max-height:65vh;overflow:auto}
+  .dlg-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .dlg-body{padding:18px;max-height:64vh;overflow:auto}
   #reportContent{outline:none}
-  #reportContent[contenteditable="true"]:focus{background:#fffdf7}
-  .report h4{margin:0 0 4px;font-size:15px}
-  .report .rq{font-size:12px;color:var(--muted);font-style:italic;border-left:3px solid var(--hl-active);padding-left:8px;margin:10px 0 4px}
-  .report .rc{margin:0 0 14px;font-size:14px}
-  .banner{background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:12.5px;
-          padding:9px 12px;border-radius:8px;margin-bottom:14px}
-  select{font-family:inherit;font-size:13px;padding:7px 9px;border-radius:8px;border:1px solid var(--line)}
-  @media (max-width:900px){main{grid-template-columns:1fr}}
+  .report h4{margin:14px 0 4px;font-size:14px}
+  .report .rq{font-size:12px;color:var(--muted);font-style:italic;border-left:3px solid #fbbf24;padding-left:8px;margin:8px 0 3px}
+  .report .rc{margin:0 0 10px;font-size:13.5px}
+  .banner{background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:12.5px;padding:9px 12px;border-radius:8px;margin-bottom:12px}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(max-width:900px){.cor-main{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header>
-  <h1>🎤 Asistente de Feedback por Voz</h1>
-  <span class="tag">Prototipo · v0.2</span>
-  <div class="bar">
-    <select id="lang" title="Idioma de dictado">
-      <option value="es-CL">Español (Chile)</option>
-      <option value="es-ES">Español (España)</option>
-      <option value="es-MX">Español (México)</option>
-    </select>
-    <button id="uploadBtn">📁 Subir documentos</button>
-    <button id="editBtn">✏️ Editar documento</button>
-    <button id="shareBtn" class="ghost" title="Disponible en una próxima etapa">👥 Compartir (pronto)</button>
-    <button id="consolidate" class="primary">✨ Consolidar y ver reporte</button>
+
+<!-- ============ LOGIN ============ -->
+<div id="auth">
+  <div class="authbox">
+    <h1>🎤 Feedback por Voz</h1>
+    <p class="sub">Corrige documentos hablando. Inicia sesión para continuar.</p>
+    <label>Correo</label>
+    <input id="email" type="email" placeholder="profe@colegio.cl">
+    <label>Contraseña</label>
+    <input id="pass" type="password" placeholder="mínimo 6 caracteres">
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button id="loginBtn" class="primary" style="flex:1">Entrar</button>
+      <button id="signupBtn" style="flex:1">Crear cuenta</button>
+    </div>
+    <div class="msg" id="authMsg"></div>
   </div>
-  <input type="file" id="fileInput" accept=".docx,.pdf,.txt,.html" multiple hidden>
-</header>
+</div>
 
-<div id="tabs"></div>
+<!-- ============ APP ============ -->
+<div id="app">
+  <div class="topbar">
+    <span class="brand">🎤 Feedback por Voz</span>
+    <span class="crumbs" id="crumbs"></span>
+    <span class="right"><span id="who"></span><button id="logout" class="sm">Salir</button></span>
+  </div>
 
-<main id="workspace" style="display:none">
-  <section class="card">
-    <h2>Documento del alumno <span id="docName" style="text-transform:none;font-weight:500;color:var(--ink)"></span></h2>
-    <div id="doc"></div>
-    <div class="hint">👆 Selecciona una frase con el mouse y presiona <b>Grabar comentario</b>. El comentario queda anclado a esa frase.</div>
-  </section>
+  <!-- Vistas de navegación -->
+  <div class="content" id="navView"></div>
 
-  <section class="card right">
-    <h2>Comentarios del profesor</h2>
-    <div class="toolbar">
-      <button id="recBtn" class="rec">🎤 Grabar comentario</button>
-      <span class="reclive" id="recLive"><span class="dot"></span> Escuchando… habla ahora</span>
+  <!-- Corrector -->
+  <div id="corrector">
+    <div class="topbar" style="position:static;border-top:1px solid var(--line)">
+      <button id="backCor" class="sm">← Volver</button>
+      <span id="corTitle" style="font-weight:600;font-size:14px"></span>
+      <span class="right">
+        <button id="consBtn" class="sm">✨ Consolidar</button>
+        <button id="saveBtn" class="primary sm">💾 Guardar</button>
+      </span>
     </div>
-    <div id="comments"></div>
-    <div class="layers">
-      <b style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;width:100%">Capas a exportar</b>
-      <label><input type="checkbox" id="layerSummary" checked> Resumen consolidado</label>
-      <label><input type="checkbox" id="layerComments" checked> Comentarios anclados</label>
-      <label><input type="checkbox" id="layerAudio" disabled> Audios (próximamente)</label>
+    <div class="cor-main">
+      <div id="viewer"></div>
+      <aside class="side">
+        <h2>Comentarios</h2>
+        <div class="tools">
+          <button id="rec" class="rec sm">🎤 Comentar selección</button>
+          <span class="reclive" id="live"><span class="dot"></span> Escuchando…</span>
+        </div>
+        <div id="list"></div>
+      </aside>
     </div>
-  </section>
-</main>
-
-<div id="drop">
-  <p>📥 <b>Arrastra aquí tus documentos</b> (.pdf, .docx o .txt) — o <span style="color:var(--accent);text-decoration:underline">haz clic para elegirlos</span></p>
-  <p style="font-size:12px">Puedes soltar varios a la vez: cada uno se abre en su propia pestaña.</p>
-  <button id="sampleBtn" class="ghost" style="margin-top:6px">…o carga un ensayo de ejemplo para probar</button>
+  </div>
 </div>
 
 <dialog id="reportDlg">
-  <div class="dlg-head">
-    <h3>Reporte para el alumno</h3>
-    <span style="font-size:12px;color:var(--muted)">✏️ puedes editar el texto aquí antes de exportar</span>
-    <div style="margin-left:auto;display:flex;gap:8px">
-      <button id="downloadDoc">⬇️ Descargar (.doc)</button>
-      <button id="printPdf" class="primary">🖨️ Guardar como PDF</button>
-      <button id="closeDlg">Cerrar</button>
-    </div>
+  <div class="dlg-head"><h3 style="margin:0;font-size:15px">Reporte para el alumno</h3>
+    <span style="font-size:12px;color:var(--muted)">✏️ editable</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button id="dlDoc" class="sm">⬇️ .doc</button>
+      <button id="dlPdf" class="primary sm">🖨️ PDF</button>
+      <button id="closeDlg" class="sm">Cerrar</button>
+    </span>
   </div>
   <div class="dlg-body"><div id="reportContent" class="report" contenteditable="true"></div></div>
 </dialog>
 
 <script>
-/* ================= Estado ================= */
-let docs = [];          // {id, name, html, comments:[{id,quote,text,aiText,useAi}]}
-let activeDocId = null;
-let activeCmtId = null;
-let recognition = null, recording = false, recTargetId = null;
+/* ================= CONFIG ================= */
+const SUPABASE_URL = 'https://mihmdwnanxaiaguhiffu.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_PcqOCOz6n7K_L4W7DM8UYg_BZhi55_n';
+const API_BASE = ''; // /api/ai vive en el mismo dominio (Vercel)
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const $ = s => document.querySelector(s);
-const docEl = $('#doc');
+const $=s=>document.querySelector(s);
+let user=null, cur={course:null, evaluation:null, submission:null};
 
-if(window.pdfjsLib){
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+/* ================= AUTH ================= */
+function authMsg(t, ok){ const m=$('#authMsg'); m.className='msg '+(ok?'ok':'err'); m.textContent=t; }
+$('#loginBtn').onclick=async()=>{
+  const {error}=await sb.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#pass').value});
+  if(error) authMsg(error.message);
+};
+$('#signupBtn').onclick=async()=>{
+  const {data,error}=await sb.auth.signUp({email:$('#email').value.trim(),password:$('#pass').value});
+  if(error){ authMsg(error.message); return; }
+  if(data.session) authMsg('¡Cuenta creada!', true);
+  else authMsg('Cuenta creada. Si te pide confirmar por correo, confírmalo o desactiva "Confirm email" en Supabase para probar más rápido.', true);
+};
+$('#logout').onclick=async()=>{ await sb.auth.signOut(); };
+
+sb.auth.onAuthStateChange((_e,session)=>{
+  user=session?.user||null;
+  if(user){ $('#auth').style.display='none'; $('#app').style.display='block'; $('#who').textContent=user.email; openCourses(); }
+  else{ $('#auth').style.display='flex'; $('#app').style.display='none'; showCorrector(false); }
+});
+
+/* ================= NAVEGACIÓN ================= */
+function crumbs(){
+  const c=$('#crumbs'); c.innerHTML='';
+  const add=(txt,fn,bold)=>{ const s=document.createElement('span'); s.className='c'+(bold?'':''); s.innerHTML=(bold?'<b>':'')+esc(txt)+(bold?'</b>':''); if(fn)s.onclick=fn; c.appendChild(s); };
+  add('Cursos', openCourses, !cur.course);
+  if(cur.course){ c.append(' / '); add(cur.course.name, ()=>openEvaluations(cur.course), !cur.evaluation); }
+  if(cur.evaluation){ c.append(' / '); add(cur.evaluation.name, ()=>openSubmissions(cur.evaluation), !cur.submission); }
+  if(cur.submission){ c.append(' / '); add(cur.submission.student_name||'Entrega', null, true); }
 }
+function showCorrector(on){ $('#corrector').style.display=on?'block':'none'; $('#navView').style.display=on?'none':'block'; }
 
-/* ===== Conexión con la IA (mini-servidor /api/ai) =====
-   Si publicas en Vercel, déjalo en '' (mismo origen).
-   Si abres el HTML localmente y quieres usar la IA ya publicada,
-   pon aquí tu URL de Vercel, ej: 'https://tu-proyecto.vercel.app' */
-const API_BASE = '';
-async function aiCall(payload){
-  const r = await fetch(API_BASE + '/api/ai', {
-    method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(payload)
+/* ---- CURSOS ---- */
+async function openCourses(){
+  cur={course:null,evaluation:null,submission:null}; showCorrector(false); crumbs();
+  const {data,error}=await sb.from('courses').select('*').order('created_at');
+  const v=$('#navView');
+  v.innerHTML=`<h2 class="title">Tus cursos</h2><p class="hint">Organiza tus correcciones por curso o asignatura.</p><div class="grid" id="g"></div>`;
+  if(error){ v.innerHTML+='<p class="hint">Error: '+esc(error.message)+'</p>'; return; }
+  const g=$('#g');
+  (data||[]).forEach(c=>{
+    const el=div(`<div class="cardi"><span class="x">✕</span><h3>📚 ${esc(c.name)}</h3><div class="meta">Abrir</div></div>`);
+    el.querySelector('h3').onclick=()=>openEvaluations(c);
+    el.onclick=(e)=>{ if(!e.target.classList.contains('x')) openEvaluations(c); };
+    el.querySelector('.x').onclick=(e)=>{ e.stopPropagation(); del('courses',c.id,'¿Borrar el curso y todo lo que contiene?',openCourses); };
+    g.appendChild(el);
   });
-  const d = await r.json().catch(() => ({}));
-  if(!r.ok || d.error) throw new Error(d.error || ('HTTP '+r.status));
-  return d.text;
+  const nc=div(`<div class="cardi newcard">＋ Nuevo curso</div>`);
+  nc.onclick=async()=>{ const name=prompt('Nombre del curso (ej: Historia 3°A):'); if(!name)return;
+    const {error}=await sb.from('courses').insert({name}); if(error)alert(error.message); else openCourses(); };
+  g.appendChild(nc);
 }
 
-const SAMPLE = `<p>La inteligencia artificial ha transformado la educación en la última década. Los profesores ahora cuentan con herramientas que antes eran impensables para apoyar su labor diaria.</p>
-<p>En este ensayo se argumenta que la tecnología reemplazará completamente a los docentes. Las máquinas pueden enseñar mejor que las personas porque no se cansan ni cometen errores.</p>
-<p>Sin embargo, la evidencia disponible es limitada y no se citan fuentes académicas que respalden esta afirmación tan fuerte. Muchos estudios sugieren lo contrario.</p>
-<p>En conclusión, el futuro de la educación depende de cómo integremos estas herramientas de forma responsable, poniendo siempre al estudiante en el centro del proceso de aprendizaje.</p>`;
-
-/* ================= Documentos y pestañas ================= */
-function newId(p){ return p + Math.random().toString(36).slice(2,8); }
-
-function addDoc(name, html){
-  const d = {id:newId('d'), name, html, comments:[]};
-  docs.push(d);
-  switchDoc(d.id);
-}
-
-function activeDoc(){ return docs.find(d => d.id === activeDocId); }
-
-function saveActiveDoc(){
-  const d = activeDoc();
-  if(d) d.html = docEl.innerHTML;
-}
-
-function switchDoc(id){
-  saveActiveDoc();
-  activeDocId = id; activeCmtId = null;
-  const d = activeDoc();
-  $('#drop').style.display = docs.length ? 'none' : 'block';
-  $('#workspace').style.display = docs.length ? 'grid' : 'none';
-  if(d){
-    docEl.innerHTML = d.html;
-    $('#docName').textContent = '· ' + d.name;
-    bindHighlights();
-    renderComments();
-  }
-  renderTabs();
-}
-
-function closeDoc(id){
-  if(id === activeDocId) saveActiveDoc();
-  docs = docs.filter(d => d.id !== id);
-  if(activeDocId === id) activeDocId = null;
-  if(docs.length) switchDoc(docs[0].id);
-  else { activeDocId=null; renderTabs(); $('#drop').style.display='block'; $('#workspace').style.display='none'; }
-}
-
-function renderTabs(){
-  const t = $('#tabs'); t.innerHTML = '';
-  docs.forEach(d => {
-    const el = document.createElement('div');
-    el.className = 'tab' + (d.id===activeDocId ? ' active':'');
-    el.innerHTML = `<span class="nm">${escapeHtml(d.name)}</span>
-                    <span class="cnt">${d.comments.length}</span>
-                    <span class="x" title="Cerrar">✕</span>`;
-    el.querySelector('.nm').onclick = () => switchDoc(d.id);
-    el.querySelector('.cnt').onclick = () => switchDoc(d.id);
-    el.querySelector('.x').onclick = (e) => { e.stopPropagation(); closeDoc(d.id); };
-    t.appendChild(el);
+/* ---- EVALUACIONES ---- */
+async function openEvaluations(course){
+  cur={course,evaluation:null,submission:null}; showCorrector(false); crumbs();
+  const {data}=await sb.from('evaluations').select('*').eq('course_id',course.id).order('created_at');
+  const v=$('#navView');
+  v.innerHTML=`<h2 class="title">${esc(course.name)}</h2><p class="hint">Evaluaciones de este curso (una tesis, un control, un ensayo…).</p><div class="grid" id="g"></div>`;
+  const g=$('#g');
+  (data||[]).forEach(e=>{
+    const el=div(`<div class="cardi"><span class="x">✕</span><h3>📝 ${esc(e.name)}</h3><div class="meta"><span class="pill">${e.type==='control'?'Control · varios alumnos':'Ensayo/Tesis'}</span></div></div>`);
+    el.onclick=(ev)=>{ if(!ev.target.classList.contains('x')) openSubmissions(e); };
+    el.querySelector('.x').onclick=(ev)=>{ ev.stopPropagation(); del('evaluations',e.id,'¿Borrar esta evaluación y sus entregas?',()=>openEvaluations(course)); };
+    g.appendChild(el);
   });
-  if(docs.length){
-    const add = document.createElement('div');
-    add.className = 'tab add'; add.textContent = '＋ agregar';
-    add.onclick = () => $('#fileInput').click();
-    t.appendChild(add);
+  const nc=div(`<div class="cardi newcard">＋ Nueva evaluación</div>`);
+  nc.onclick=async()=>{ const name=prompt('Nombre (ej: Tesis final, Control 5):'); if(!name)return;
+    const type=confirm('¿Es un CONTROL/PRUEBA con varios alumnos?\n\nAceptar = Control (varios alumnos)\nCancelar = Ensayo/Tesis')?'control':'ensayo';
+    const {error}=await sb.from('evaluations').insert({name,type,course_id:course.id}); if(error)alert(error.message); else openEvaluations(course); };
+  g.appendChild(nc);
+}
+
+/* ---- ENTREGAS ---- */
+async function openSubmissions(ev){
+  cur={course:cur.course,evaluation:ev,submission:null}; showCorrector(false); crumbs();
+  const {data}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
+  const v=$('#navView');
+  v.innerHTML=`<h2 class="title">${esc(ev.name)}</h2>
+    <p class="hint">Sube los documentos (PDF) de los alumnos. Cada uno es una entrega.</p>
+    <div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir. Puedes subir varios.</div>
+    <input type="file" id="subFile" accept=".pdf" multiple hidden>
+    <div id="subs"></div>`;
+  const subs=$('#subs');
+  (data||[]).forEach(s=>{
+    const el=div(`<div class="row-item">
+      <span style="font-size:18px">🧑‍🎓</span>
+      <span class="nm">${esc(s.student_name||'Entrega')}</span>
+      <span class="status ${s.status}">${s.status}</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="sm open">Corregir</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button>
+      </span></div>`);
+    el.querySelector('.open').onclick=()=>openSubmission(s);
+    el.querySelector('.nm').onclick=()=>openSubmission(s);
+    el.querySelector('.rename').onclick=async()=>{ const n=prompt('Nombre del alumno:',s.student_name||''); if(n===null)return;
+      await sb.from('submissions').update({student_name:n}).eq('id',s.id); openSubmissions(ev); };
+    el.querySelector('.delb').onclick=()=>del('submissions',s.id,'¿Borrar esta entrega?',()=>openSubmissions(ev));
+    subs.appendChild(el);
+  });
+  // subida
+  const fileInput=$('#subFile'), drop=$('#drop');
+  drop.onclick=()=>fileInput.click();
+  fileInput.onchange=e=>uploadSubs(e.target.files,ev);
+  ['dragover','dragenter'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.add('drag');}));
+  ['dragleave','drop'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.remove('drag');if(x==='drop')uploadSubs(e.dataTransfer.files,ev);}));
+}
+
+async function uploadSubs(files, ev){
+  for(const f of files){
+    if(!f.name.toLowerCase().endsWith('.pdf')){ alert('Por ahora solo PDF: '+f.name); continue; }
+    const path=`${user.id}/${crypto.randomUUID()}-${f.name}`;
+    const up=await sb.storage.from('documentos').upload(path,f);
+    if(up.error){ alert('Error al subir '+f.name+': '+up.error.message); continue; }
+    await sb.from('submissions').insert({evaluation_id:ev.id, student_name:f.name.replace(/\.pdf$/i,''), file_path:path});
   }
+  openSubmissions(ev);
 }
 
-function bindHighlights(){
-  docEl.querySelectorAll('.hl').forEach(h => h.onclick = () => focusComment(h.dataset.cid));
-}
+/* ================= CORRECTOR ================= */
+let pdfDoc=null, scale=1.0, comments=[], activeId=null;
+let recognition=null, recording=false, recTarget=null;
 
-/* ================= Carga de archivos ================= */
-async function handleFiles(list){
-  for(const file of list){
-    const n = file.name.toLowerCase();
-    try{
-      let html = '';
-      if(n.endsWith('.docx')){
-        if(!window.mammoth){ alert('No se pudo cargar el lector de Word (¿sin internet?). Prueba con un .txt.'); continue; }
-        const ab = await file.arrayBuffer();
-        html = (await mammoth.convertToHtml({arrayBuffer:ab})).value || '<p></p>';
-      } else if(n.endsWith('.pdf')){
-        html = await pdfToHtml(file);
-        if(html === null) continue;
-      } else if(n.endsWith('.txt')){
-        html = textToHtml(await file.text());
-      } else if(n.endsWith('.html')){
-        html = await file.text();
-      } else { alert('Formato no soportado aún: '+file.name+'\nUsa .docx o .txt'); continue; }
-      addDoc(file.name.replace(/\.[^.]+$/,''), html);
-    }catch(e){ console.error(e); alert('No se pudo abrir '+file.name); }
-  }
+async function openSubmission(s){
+  cur.submission=s; crumbs(); showCorrector(true);
+  $('#corTitle').textContent=s.student_name||'Entrega';
+  $('#viewer').innerHTML='<p class="hint" style="padding:20px">Cargando documento…</p>';
+  comments=[]; activeId=null; renderList();
+  // cargar archivo desde Storage
+  const dl=await sb.storage.from('documentos').download(s.file_path);
+  if(dl.error){ $('#viewer').innerHTML='<p class="hint" style="padding:20px">No se pudo cargar el archivo: '+esc(dl.error.message)+'</p>'; return; }
+  const ab=await dl.data.arrayBuffer();
+  pdfDoc=await pdfjsLib.getDocument({data:ab}).promise;
+  await renderAll();
+  // cargar comentarios guardados
+  const {data}=await sb.from('comments').select('*').eq('submission_id',s.id).order('position');
+  comments=(data||[]).map(c=>({id:'c'+c.id, dbId:c.id, page:c.page, rects:c.rects||[], quote:c.quote||'', text:c.body||'', aiText:c.ai_text||'', useAi:!!c.use_ai}));
+  renderList(); drawAllHighlights();
 }
-function textToHtml(t){
-  return t.split(/\n\s*\n/).map(p => '<p>'+escapeHtml(p.trim()).replace(/\n/g,'<br>')+'</p>').join('') || '<p></p>';
-}
+$('#backCor').onclick=()=>openSubmissions(cur.evaluation);
 
-/* Extrae texto de un PDF y lo reconstruye en líneas/párrafos por posición */
-async function pdfToHtml(file){
-  if(!window.pdfjsLib){ alert('No se pudo cargar el lector de PDF (¿sin internet?). Prueba con .docx o .txt.'); return null; }
-  const ab = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data:ab}).promise;
-  let html = '';
-  for(let p=1; p<=pdf.numPages; p++){
-    const page = await pdf.getPage(p);
-    const tc = await page.getTextContent();
-    const lines = {};
-    tc.items.forEach(it => {
-      if(!it.str) return;
-      const y = Math.round(it.transform[5] / 3) * 3;   // agrupa por línea
-      (lines[y] = lines[y] || []).push(it.str);
+async function renderAll(){
+  const viewer=$('#viewer'); viewer.innerHTML='';
+  const targetW=Math.min(viewer.clientWidth-36,900)*scale;
+  for(let n=1;n<=pdfDoc.numPages;n++){
+    const page=await pdfDoc.getPage(n);
+    const base=page.getViewport({scale:1});
+    const vp=page.getViewport({scale:targetW/base.width});
+    const dpr=window.devicePixelRatio||1;
+    const wrap=div('<div class="page"></div>'); wrap.style.width=vp.width+'px'; wrap.style.height=vp.height+'px'; wrap.dataset.page=n;
+    const canvas=document.createElement('canvas');
+    canvas.width=vp.width*dpr; canvas.height=vp.height*dpr; canvas.style.width=vp.width+'px'; canvas.style.height=vp.height+'px';
+    const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr); wrap.appendChild(canvas);
+    const hl=div('<div class="hlLayer"></div>'); wrap.appendChild(hl);
+    const tl=div('<div class="textLayer"></div>'); wrap.appendChild(tl);
+    viewer.appendChild(wrap);
+    await page.render({canvasContext:ctx,viewport:vp}).promise;
+    const tc=await page.getTextContent();
+    tc.items.forEach(item=>{ if(!item.str)return;
+      const tx=pdfjsLib.Util.transform(vp.transform,item.transform); const h=Math.hypot(tx[2],tx[3]);
+      const sp=document.createElement('span'); sp.textContent=item.str;
+      sp.style.left=tx[4]+'px'; sp.style.top=(tx[5]-h)+'px'; sp.style.fontSize=h+'px'; sp.style.fontFamily='sans-serif';
+      tl.appendChild(sp); const target=item.width*vp.scale, real=sp.getBoundingClientRect().width;
+      if(real>0&&target>0) sp.style.transform='scaleX('+(target/real)+')';
     });
-    Object.keys(lines).map(Number).sort((a,b) => b-a).forEach(y => {
-      const line = lines[y].join(' ').replace(/\s+/g,' ').trim();
-      if(line) html += '<p>'+escapeHtml(line)+'</p>';
-    });
   }
-  if(!html.trim()){
-    alert('Este PDF no tiene texto seleccionable (parece escaneado como imagen). Para esos casos hará falta OCR, que agregaremos más adelante.');
-    return null;
-  }
-  return html;
+  drawAllHighlights();
 }
 
-$('#uploadBtn').onclick = () => $('#fileInput').click();
-$('#fileInput').onchange = e => { handleFiles(e.target.files); e.target.value=''; };
-$('#sampleBtn').onclick = () => addDoc('Ensayo de ejemplo', SAMPLE);
-$('#drop').onclick = e => { if(e.target.id==='drop' || e.target.tagName==='P') $('#fileInput').click(); };
-
-['dragover','dragenter'].forEach(ev => document.addEventListener(ev, e => {
-  e.preventDefault(); $('#drop').classList.add('drag'); $('#drop').style.display='block';
-}));
-['dragleave','drop'].forEach(ev => document.addEventListener(ev, e => {
-  e.preventDefault();
-  if(ev==='drop'){ $('#drop').classList.remove('drag'); handleFiles(e.dataTransfer.files); if(docs.length>1) $('#drop').style.display='none'; }
-  else if(e.clientX===0 && e.clientY===0){ $('#drop').classList.remove('drag'); if(docs.length) $('#drop').style.display='none'; }
-}));
-
-/* ================= Edición del documento ================= */
-$('#editBtn').onclick = () => {
-  const on = docEl.isContentEditable;
-  docEl.contentEditable = on ? 'false' : 'true';
-  $('#editBtn').textContent = on ? '✏️ Editar documento' : '✅ Terminar edición';
-  if(on){ docEl.blur(); saveActiveDoc(); }
+$('#rec').onclick=()=>{
+  if(recording){ stopRec(); return; }
+  const sel=window.getSelection();
+  if(!sel.rangeCount||sel.isCollapsed){ alert('Selecciona con el mouse el texto a comentar.'); return; }
+  const range=sel.getRangeAt(0);
+  const node=range.commonAncestorContainer;
+  const pageEl=(node.nodeType===1?node:node.parentElement).closest('.page');
+  if(!pageEl){ alert('La selección debe estar dentro del documento.'); return; }
+  const pr=pageEl.getBoundingClientRect();
+  const rects=[...range.getClientRects()].map(r=>({x:(r.left-pr.left)/pr.width,y:(r.top-pr.top)/pr.height,w:r.width/pr.width,h:r.height/pr.height})).filter(r=>r.w>0&&r.h>0);
+  if(!rects.length){ alert('No se pudo anclar.'); return; }
+  const id='c'+Date.now();
+  comments.push({id,page:+pageEl.dataset.page,rects,quote:sel.toString().trim(),text:'',aiText:'',useAi:false});
+  sel.removeAllRanges(); recTarget=id; renderList(); drawAllHighlights(); focusC(id); startRec();
 };
 
-/* ================= Anclar selección + grabar ================= */
-function getSelectionInsideDoc(){
-  const sel = window.getSelection();
-  if(!sel.rangeCount || sel.isCollapsed) return null;
-  const range = sel.getRangeAt(0);
-  if(!docEl.contains(range.commonAncestorContainer)) return null;
-  return range;
-}
-function highlightRange(range, id){
-  const span = document.createElement('span');
-  span.className='hl'; span.dataset.cid=id;
-  try{ span.appendChild(range.extractContents()); range.insertNode(span); }
-  catch(e){ return null; }
-  span.onclick = () => focusComment(id);
-  return span;
+function drawAllHighlights(){
+  document.querySelectorAll('.hlLayer').forEach(l=>l.innerHTML='');
+  comments.forEach(c=>{ const wrap=document.querySelector('.page[data-page="'+c.page+'"]'); if(!wrap)return;
+    const layer=wrap.querySelector('.hlLayer'),W=wrap.clientWidth,H=wrap.clientHeight;
+    c.rects.forEach(r=>{ const b=div('<div class="hlBox"></div>'); if(c.id===activeId)b.classList.add('active');
+      b.style.left=r.x*W+'px'; b.style.top=r.y*H+'px'; b.style.width=r.w*W+'px'; b.style.height=r.h*H+'px';
+      b.onclick=()=>focusC(c.id); layer.appendChild(b); });
+  });
 }
 
-$('#recBtn').onclick = () => {
-  if(recording){ stopRecording(); return; }
-  const d = activeDoc();
-  if(!d){ alert('Primero abre un documento.'); return; }
-  const range = getSelectionInsideDoc();
-  if(!range){ alert('Primero selecciona con el mouse la frase que quieres comentar.'); return; }
-  const quote = range.toString().trim();
-  const id = newId('c');
-  if(!highlightRange(range, id)){ alert('No se pudo anclar ahí. Intenta seleccionar dentro de un mismo párrafo.'); return; }
-  d.comments.push({id, quote, text:'', aiText:'', useAi:false});
-  recTargetId = id;
-  renderComments(); renderTabs(); focusComment(id);
-  startRecording();
-};
-
-function initRecognition(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ alert('Tu navegador no soporta dictado por voz.\nUsa Google Chrome o Microsoft Edge. Igual puedes escribir el comentario a mano.'); return null; }
-  const r = new SR(); r.lang = $('#lang').value; r.interimResults = true; r.continuous = true; return r;
-}
-function startRecording(){
-  recognition = initRecognition();
-  if(!recognition){ recTargetId=null; return; }
-  let base = getCmt(recTargetId)?.text || '';
-  recognition.onresult = ev => {
-    let interim='';
-    for(let i=ev.resultIndex;i<ev.results.length;i++){
-      const tr = ev.results[i][0].transcript;
-      if(ev.results[i].isFinal) base += (base?' ':'')+tr.trim(); else interim += tr;
-    }
-    const c = getCmt(recTargetId);
-    if(c){ c.text = (base+' '+interim).trim(); renderComments(); }
-  };
-  recognition.onerror = () => stopRecording();
-  recognition.onend = () => { if(recording) stopRecording(); };
-  try{ recognition.start(); recording=true; setRecUI(true); }catch(e){}
-}
-function stopRecording(){
-  recording=false; setRecUI(false);
+/* voz */
+function initRec(){ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ alert('Usa Chrome o Edge para dictar. Igual puedes escribir.'); return null; }
+  const r=new SR(); r.lang='es-CL'; r.interimResults=true; r.continuous=true; return r; }
+function startRec(){ recognition=initRec(); if(!recognition){recTarget=null;return;}
+  let base=getC(recTarget)?.text||'';
+  recognition.onresult=ev=>{ let it='';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){ const t=ev.results[i][0].transcript;
+      if(ev.results[i].isFinal)base+=(base?' ':'')+t.trim(); else it+=t; }
+    const c=getC(recTarget); if(c){ c.text=(base+' '+it).trim(); renderList(); } };
+  recognition.onerror=()=>stopRec(); recognition.onend=()=>{ if(recording)stopRec(); };
+  try{ recognition.start(); recording=true; recUI(true);}catch(e){} }
+function stopRec(){ recording=false; recUI(false);
   if(recognition){ try{recognition.stop();}catch(e){} recognition=null; }
-  const c = getCmt(recTargetId); if(c) c.text = c.text.trim();
-  recTargetId=null; renderComments();
-}
-function setRecUI(on){
-  $('#recBtn').textContent = on ? '⏹ Detener' : '🎤 Grabar comentario';
-  $('#recBtn').classList.toggle('primary', on);
-  $('#recBtn').classList.toggle('rec', !on);
-  $('#recLive').classList.toggle('on', on);
-}
+  const c=getC(recTarget); if(c)c.text=c.text.trim(); recTarget=null; renderList(); }
+function recUI(on){ $('#rec').textContent=on?'⏹ Detener':'🎤 Comentar selección';
+  $('#rec').classList.toggle('primary',on); $('#rec').classList.toggle('rec',!on); $('#live').classList.toggle('on',on); }
 
-/* ================= Comentarios ================= */
-function activeComments(){ return activeDoc()?.comments || []; }
-function getCmt(id){ return activeComments().find(c => c.id===id); }
-
-function focusComment(id){
-  activeCmtId = id; renderComments();
-  docEl.querySelectorAll('.hl').forEach(h => h.classList.toggle('active', h.dataset.cid===id));
-  const el = document.querySelector('.cmt[data-id="'+id+'"]');
-  if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
-}
-
-function renderComments(){
-  const box = $('#comments');
-  const list = activeComments();
-  if(!list.length){
-    box.innerHTML = '<div class="empty">Aún no hay comentarios en este documento.<br>Selecciona texto y graba tu primer comentario.</div>';
-    return;
-  }
+/* lista */
+const getC=id=>comments.find(c=>c.id===id);
+function focusC(id){ activeId=id; renderList(); drawAllHighlights();
+  const el=document.querySelector('.cmt[data-id="'+id+'"]'); if(el)el.scrollIntoView({behavior:'smooth',block:'center'}); }
+function renderList(){
+  const box=$('#list');
+  if(!comments.length){ box.innerHTML='<div class="hint" style="padding:20px 4px;text-align:center">Selecciona texto y presiona <b>Comentar selección</b>.</div>'; return; }
   box.innerHTML='';
-  list.forEach((c,i) => {
-    const div = document.createElement('div');
-    div.className='cmt'+(c.id===activeCmtId?' active':'');
-    div.dataset.id=c.id;
-    div.innerHTML = `
-      <div class="quote">“${escapeHtml(c.quote)}”</div>
-      <label class="fld">Tu comentario</label>
-      <textarea class="own" placeholder="Habla o escribe tu comentario…">${escapeHtml(c.text)}</textarea>
-      <div class="row">
-        <button class="aiBtn">✨ Optimizar con IA</button>
-        <span class="sp"></span>
-        <button class="del">🗑</button>
-      </div>
-      <div class="aiWrap"></div>`;
-    const own = div.querySelector('.own');
-    own.oninput = () => { c.text = own.value; };
-    own.onfocus = () => focusComment(c.id);
-    const aiBtn = div.querySelector('.aiBtn');
-    aiBtn.onclick = async () => {
-      if(!c.text.trim()){ alert('Escribe o dicta primero tu comentario.'); return; }
-      aiBtn.disabled = true; aiBtn.textContent = '✨ Optimizando…';
-      try{
-        c.aiText = await aiCall({mode:'optimize', text:c.text, quote:c.quote});
-      }catch(e){
-        c.aiText = aiCleanup(c.text);
-        alert('No se pudo usar la IA real (¿aún no publicas el servidor o falta la API key?).\nPor ahora se usó la limpieza local básica.\n\nDetalle: '+e.message);
-      }
-      c.useAi = true; renderComments();
-    };
-    div.querySelector('.del').onclick = () => deleteComment(c.id);
-
-    if(c.aiText){
-      const w = div.querySelector('.aiWrap');
-      w.innerHTML = `
-        <div class="ai">
-          <label class="fld" style="color:#7c3aed">✨ Versión optimizada con IA (editable)</label>
-          <textarea class="aiT">${escapeHtml(c.aiText)}</textarea>
-          <div class="pick">
-            <label><input type="radio" name="pick-${c.id}" class="pOwn" ${!c.useAi?'checked':''}> Usar la mía</label>
-            <label><input type="radio" name="pick-${c.id}" class="pAi" ${c.useAi?'checked':''}> Usar la de IA</label>
-          </div>
-        </div>`;
-      w.querySelector('.aiT').oninput = e => { c.aiText = e.target.value; };
-      w.querySelector('.pOwn').onchange = () => { c.useAi=false; };
-      w.querySelector('.pAi').onchange = () => { c.useAi=true; };
+  comments.forEach((c,i)=>{
+    const d=div(`<div class="cmt${c.id===activeId?' active':''}" data-id="${c.id}">
+      <div class="q">pág. ${c.page} · “${esc(c.quote)}”</div>
+      <textarea class="own" placeholder="Comentario…">${esc(c.text)}</textarea>
+      <div class="r"><button class="aiBtn">✨ Optimizar IA</button><button class="del">🗑</button></div>
+      <div class="aiWrap"></div></div>`);
+    const own=d.querySelector('.own'); own.oninput=()=>c.text=own.value; own.onfocus=()=>focusC(c.id);
+    const aiBtn=d.querySelector('.aiBtn');
+    aiBtn.onclick=async()=>{ if(!c.text.trim()){alert('Escribe o dicta primero.');return;}
+      aiBtn.disabled=true; aiBtn.innerHTML='<span class="spin"></span>';
+      try{ c.aiText=await aiCall({mode:'optimize',text:c.text,quote:c.quote}); c.useAi=true; }
+      catch(e){ alert('No se pudo usar la IA (¿publicaste en Vercel con la key?): '+e.message); }
+      renderList(); };
+    d.querySelector('.del').onclick=()=>{ comments=comments.filter(x=>x.id!==c.id); if(activeId===c.id)activeId=null; renderList(); drawAllHighlights(); };
+    if(c.aiText){ const w=d.querySelector('.aiWrap');
+      w.innerHTML=`<div class="ai"><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-bottom:3px">✨ Versión IA (editable)</div>
+        <textarea class="aiT">${esc(c.aiText)}</textarea>
+        <div class="pick"><label><input type="radio" name="p${c.id}" class="pO" ${!c.useAi?'checked':''}> La mía</label>
+        <label><input type="radio" name="p${c.id}" class="pA" ${c.useAi?'checked':''}> La de IA</label></div></div>`;
+      w.querySelector('.aiT').oninput=e=>c.aiText=e.target.value;
+      w.querySelector('.pO').onchange=()=>c.useAi=false; w.querySelector('.pA').onchange=()=>c.useAi=true;
     }
-    box.appendChild(div);
+    box.appendChild(d);
   });
 }
 
-/* Limpieza local — MAQUETA de lo que hará la IA real (quita muletillas, ordena) */
-function aiCleanup(text){
-  let t = ' '+text+' ';
-  t = t.replace(/\s(e+h+m*|e+m+|m+h+|mmm+|eee+|ehh+|em+|este+|o\s?sea|ajá|aja|pues|bueno)\s/gi, ' ');
-  t = t.replace(/\s+/g,' ').replace(/\s+([,.;:])/g,'$1').trim();
-  if(t){ t = t.charAt(0).toUpperCase()+t.slice(1); if(!/[.!?]$/.test(t)) t+='.'; }
-  return t || text;
-}
-
-function deleteComment(id){
-  const span = docEl.querySelector('.hl[data-cid="'+id+'"]');
-  if(span){ const p=span.parentNode; while(span.firstChild) p.insertBefore(span.firstChild, span); p.removeChild(span); p.normalize(); }
-  const d = activeDoc(); d.comments = d.comments.filter(c => c.id!==id);
-  if(activeCmtId===id) activeCmtId=null;
-  renderComments(); renderTabs();
-}
-
-/* ================= Consolidar / reporte ================= */
-function finalText(c){ return (c.useAi && c.aiText) ? c.aiText : c.text; }
-
-function assembleReport(list, summary, note){
-  let html = note ? `<div class="banner">${note}</div>` : '';
-  if($('#layerSummary').checked && list.length){
-    html += `<h4>Resumen de la corrección</h4><p class="rc">${escapeHtml(summary)}</p>`;
+/* guardar en la base */
+$('#saveBtn').onclick=async()=>{
+  const btn=$('#saveBtn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Guardando';
+  const sid=cur.submission.id;
+  await sb.from('comments').delete().eq('submission_id',sid);
+  if(comments.length){
+    const rows=comments.map((c,i)=>({submission_id:sid,page:c.page,rects:c.rects,quote:c.quote,body:c.text,ai_text:c.aiText,use_ai:c.useAi,position:i}));
+    const {error}=await sb.from('comments').insert(rows);
+    if(error){ alert('Error al guardar: '+error.message); btn.disabled=false; btn.textContent='💾 Guardar'; return; }
   }
-  if($('#layerComments').checked){
-    html += `<h4 style="margin-top:18px">Comentarios sobre el texto</h4>`;
-    if(!list.length) html += `<p class="rc" style="color:#888">No hay comentarios con contenido.</p>`;
-    list.forEach((c,i) => {
-      html += `<div class="rq">“${escapeHtml(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${escapeHtml(finalText(c))}</p>`;
-    });
-  }
-  return html;
-}
-function localSummary(list){
-  return `Se realizaron ${list.length} observación(es) sobre tu trabajo. Revisa cada comentario junto a la parte del texto a la que corresponde y considera las sugerencias para mejorar tu argumentación, el uso de fuentes y la redacción.`;
-}
-$('#consolidate').onclick = async () => {
-  if(!activeDoc()){ alert('Primero abre un documento.'); return; }
-  const list = activeComments().filter(c => finalText(c).trim());
-  const btn = $('#consolidate'); btn.disabled = true; btn.textContent = '✨ Consolidando…';
-  let summary = '', note = '';
-  if($('#layerSummary').checked && list.length){
-    try{
-      summary = await aiCall({mode:'consolidate', doc:activeDoc().name,
-        comments:list.map(c => ({quote:c.quote, text:finalText(c)}))});
-    }catch(e){
-      summary = localSummary(list);
-      note = '🤖 No se pudo usar la IA real (falta publicar el servidor o la API key). Este resumen es una versión local básica. El texto es editable.';
-    }
-  }
-  $('#reportContent').innerHTML = assembleReport(list, summary, note);
-  btn.disabled = false; btn.textContent = '✨ Consolidar y ver reporte';
+  await sb.from('submissions').update({status:'corregido'}).eq('id',sid);
+  cur.submission.status='corregido';
+  btn.disabled=false; btn.innerHTML='✅ Guardado'; setTimeout(()=>btn.textContent='💾 Guardar',1500);
+};
+
+/* consolidar + exportar */
+const finalText=c=>(c.useAi&&c.aiText)?c.aiText:c.text;
+$('#consBtn').onclick=async()=>{
+  const list=comments.filter(c=>finalText(c).trim());
+  const btn=$('#consBtn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  let summary='',note='';
+  if(list.length){ try{ summary=await aiCall({mode:'consolidate',doc:cur.submission.student_name||'',comments:list.map(c=>({quote:c.quote,text:finalText(c)}))}); }
+    catch(e){ summary=`Se realizaron ${list.length} observaciones sobre tu trabajo. Revisa cada comentario junto a la parte del texto correspondiente.`; note='🤖 IA no disponible (publica en Vercel con la key). Resumen básico; editable.'; } }
+  let html=note?`<div class="banner">${note}</div>`:'';
+  if(summary) html+=`<h4>Resumen</h4><p class="rc">${esc(summary)}</p>`;
+  html+='<h4>Comentarios</h4>';
+  list.forEach((c,i)=>html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`);
+  $('#reportContent').innerHTML=html; btn.disabled=false; btn.textContent='✨ Consolidar';
   $('#reportDlg').showModal();
 };
-$('#closeDlg').onclick = () => $('#reportDlg').close();
-
-/* ================= Exportar ================= */
-function reportForExport(){
-  const clone = $('#reportContent').cloneNode(true);
-  const b = clone.querySelector('.banner'); if(b) b.remove();
-  return clone.innerHTML;
-}
-$('#downloadDoc').onclick = () => {
-  const name = activeDoc()?.name || 'alumno';
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head>
-    <body style="font-family:Calibri,Arial,sans-serif;font-size:12pt;color:#1d2430">
-    <h2>Retroalimentación — ${escapeHtml(name)}</h2>${reportForExport()}</body></html>`;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['﻿', html], {type:'application/msword'}));
-  a.download = 'retro-'+name+'.doc'; a.click();
-};
-$('#printPdf').onclick = () => {
-  const name = activeDoc()?.name || 'alumno';
-  const w = window.open('', '_blank');
-  w.document.write(`<html><head><meta charset="utf-8"><title>Retroalimentación</title>
-    <style>body{font-family:Arial,sans-serif;color:#1d2430;padding:30px;line-height:1.5}
-    h2{font-size:18px}h4{font-size:14px;margin:16px 0 4px}
-    .rq{font-size:12px;color:#666;font-style:italic;border-left:3px solid #fbbf24;padding-left:8px;margin:10px 0 4px}
-    .rc{font-size:13px;margin:0 0 12px}</style></head>
-    <body><h2>Retroalimentación — ${escapeHtml(name)}</h2>${reportForExport()}</body></html>`);
-  w.document.close(); setTimeout(() => w.print(), 300);
-};
-
-/* ================= Compartir (fase 2) ================= */
-$('#shareBtn').onclick = () => alert('Colaborar con otros profesores o ayudantes (dividirse preguntas, compartir dudas, todo asociado al mismo documento) es parte de una próxima etapa. Necesita un servidor con cuentas de usuario — lo construiremos cuando el flujo básico esté validado.');
+$('#closeDlg').onclick=()=>$('#reportDlg').close();
+function repExport(){ const c=$('#reportContent').cloneNode(true); const b=c.querySelector('.banner'); if(b)b.remove(); return c.innerHTML; }
+$('#dlDoc').onclick=()=>{ const name=cur.submission.student_name||'alumno';
+  const html=`<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body style="font-family:Calibri,Arial;font-size:12pt"><h2>Retroalimentación — ${esc(name)}</h2>${repExport()}</body></html>`;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿',html],{type:'application/msword'})); a.download='retro-'+name+'.doc'; a.click(); };
+$('#dlPdf').onclick=()=>{ const name=cur.submission.student_name||'alumno'; const w=window.open('','_blank');
+  w.document.write(`<html><head><meta charset="utf-8"><title>Retro</title><style>body{font-family:Arial;padding:30px;line-height:1.5}.rq{font-size:12px;color:#666;font-style:italic;border-left:3px solid #fbbf24;padding-left:8px;margin:8px 0 3px}.rc{font-size:13px;margin:0 0 10px}</style></head><body><h2>Retroalimentación — ${esc(name)}</h2>${repExport()}</body></html>`);
+  w.document.close(); setTimeout(()=>w.print(),300); };
 
 /* ================= util ================= */
-function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+async function aiCall(payload){
+  const r=await fetch(API_BASE+'/api/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json().catch(()=>({})); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d.text;
+}
+async function del(table,id,msg,then){ if(!confirm(msg))return; const {error}=await sb.from(table).delete().eq('id',id); if(error)alert(error.message); else then(); }
+function div(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstChild; }
+function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
-/* arranque */
-renderTabs();
+/* arranque: revisar sesión */
+sb.auth.getSession();
 </script>
 </body>
 </html>
