@@ -55,8 +55,20 @@
   .sb-eval:hover{background:var(--bg);color:var(--ink)}
   .sb-eval.sel{background:var(--accent-soft);color:var(--accent);font-weight:600}
   .sb-eval .x{margin-left:auto;opacity:0;font-size:12px}.sb-eval:hover .x{opacity:.7}.sb-eval .x:hover{color:var(--danger)}
-  .sb-add{font-size:12px;color:var(--muted);padding:5px 9px 5px 26px;cursor:pointer}
+  .sb-add{font-size:12px;color:var(--muted);padding:5px 9px 5px 34px;cursor:pointer}
   .sb-add:hover{color:var(--accent)}
+  .sb-cat{display:flex;align-items:center;gap:7px;padding:9px 8px;margin-top:8px;font-size:14px;font-weight:800;color:var(--ink);cursor:pointer;border-radius:8px}
+  .sb-cat:hover{background:var(--bg)}
+  .sb-cat .chev{font-size:11px;color:var(--muted);width:12px}
+  .sb-cat .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.2px}
+  .sb-cat .x{opacity:0;color:var(--muted);font-size:12px}
+  .sb-cat:hover .x{opacity:1}.sb-cat .x:hover{color:var(--danger)}
+  .sb-course{padding-left:16px;font-weight:550}
+  .sb-course .nm,.sb-eval .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sb-eval{padding-left:34px}
+  .shell.nosb #sidebar{display:none}
+  #toggleSb{border:none;background:transparent;font-size:17px;padding:2px 6px;color:var(--muted)}
+  #toggleSb:hover{color:var(--accent)}
 
   #mainPanel{flex:1;min-width:0;padding:22px 24px;overflow:auto;max-height:calc(100vh - 47px)}
   h2.title{font-size:18px;margin:0 0 2px}
@@ -148,6 +160,7 @@
 
 <div id="app">
   <div class="topbar">
+    <button id="toggleSb" title="Mostrar/ocultar menú">☰</button>
     <span class="brand">🎤 Feedback por Voz</span>
     <span class="crumbs" id="crumbs"></span>
     <span class="right"><span id="who"></span><button id="logout" class="sm">Salir</button></span>
@@ -186,7 +199,8 @@
 <dialog id="reportDlg">
   <div class="dlg-head"><h3 style="margin:0;font-size:15px">Reporte para el alumno</h3>
     <span style="font-size:12px;color:var(--muted)">✏️ editable</span>
-    <span style="margin-left:auto;display:flex;gap:8px">
+    <label style="font-size:12px;display:flex;gap:5px;align-items:center;margin-left:auto"><input type="checkbox" id="incTemas"> incluir temas</label>
+    <span style="display:flex;gap:8px">
       <button id="dlDoc" class="sm">⬇️ .doc</button>
       <button id="dlPdf" class="primary sm">🖨️ PDF</button>
       <button id="closeDlg" class="sm">Cerrar</button>
@@ -205,7 +219,7 @@ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudf
 const $=s=>document.querySelector(s);
 let user=null;
 let cur={course:null,evaluation:null,submission:null};
-let courses=[], evalCache={}, expanded={};
+let courses=[], categories=[], evalCache={}, expanded={};
 
 /* ---------------- AUTH ---------------- */
 function authMsg(t,ok){ const m=$('#authMsg'); m.className='msg '+(ok?'ok':'err'); m.textContent=t; }
@@ -218,7 +232,12 @@ sb.auth.onAuthStateChange((_e,session)=>{ user=session?.user||null;
   else{ $('#auth').style.display='flex'; $('#app').style.display='none'; } });
 
 /* ---------------- ARRANQUE ---------------- */
-async function boot(){ const {data}=await sb.from('courses').select('*').order('created_at'); courses=data||[]; renderSidebar(); showWelcome(); }
+async function boot(){
+  const [cats,cos]=await Promise.all([ sb.from('categories').select('*').order('created_at'), sb.from('courses').select('*').order('created_at') ]);
+  categories=cats.data||[]; courses=cos.data||[]; applySb(); renderSidebar(); showWelcome();
+}
+function applySb(){ $('#shell').classList.toggle('nosb', localStorage.getItem('sbHidden')==='1'); }
+$('#toggleSb').onclick=()=>{ const h=localStorage.getItem('sbHidden')==='1'; localStorage.setItem('sbHidden',h?'0':'1'); applySb(); };
 function showCorrector(on){ $('#corrector').style.display=on?'block':'none'; $('#shell').style.display=on?'none':'flex'; }
 
 /* ---------------- CRUMBS ---------------- */
@@ -231,43 +250,59 @@ function crumbs(){ const c=$('#crumbs'); c.innerHTML='';
 }
 
 /* ---------------- SIDEBAR ---------------- */
-async function renderSidebar(){
-  const sb1=$('#sidebar'); sb1.innerHTML='';
-  sb1.appendChild(mk('div','sb-btn sb-new','＋ Nuevo curso',newCourse));
-  sb1.appendChild(mk('div','sb-btn sb-quick','⚡ Documento rápido',quickDoc));
-  const lbl=document.createElement('div'); lbl.className='sb-lbl'; lbl.textContent='CURSOS'; sb1.appendChild(lbl);
-  courses.forEach(co=>{
-    const isSel=cur.course&&cur.course.id===co.id;
-    const row=mk('div','sb-course'+(isSel?' sel':''),'');
-    row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(co.name)}</span><span class="x" title="Borrar">✕</span>`;
-    row.querySelector('.chev').onclick=(e)=>{e.stopPropagation();toggleCourse(co);};
-    row.onclick=(e)=>{ if(!e.target.classList.contains('x')) selectCourse(co); };
-    row.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('courses',co.id,'¿Borrar el curso y todo lo que contiene?',boot);};
-    sb1.appendChild(row);
-    if(expanded[co.id]){ (evalCache[co.id]||[]).forEach(ev=>{
-        const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
-        er.innerHTML=`📝 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ev.name)}</span><span class="x">✕</span>`;
-        er.onclick=(e)=>{ if(!e.target.classList.contains('x')) selectEvaluation(ev); };
-        er.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();});};
-        sb1.appendChild(er);
-      });
-      sb1.appendChild(mk('div','sb-add','＋ nueva evaluación',()=>newEvaluation(co)));
+function renderSidebar(){
+  const el=$('#sidebar'); el.innerHTML='';
+  el.appendChild(mk('div','sb-btn sb-quick','⚡ Documento rápido',quickDoc));
+  el.appendChild(mk('div','sb-btn sb-new','＋ Nueva categoría',newCategory));
+  const groups=[{id:null,name:'CURSOS'}].concat(categories);
+  groups.forEach(cat=>{
+    const key='cat_'+(cat.id||'root');
+    if(expanded[key]===undefined) expanded[key]=true;
+    const head=mk('div','sb-cat','');
+    head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">${esc(cat.name)}</span>`+(cat.id?'<span class="x" title="Borrar categoría">✕</span>':'');
+    head.querySelector('.chev').onclick=(e)=>{e.stopPropagation();expanded[key]=!expanded[key];renderSidebar();};
+    head.querySelector('.nm').onclick=()=>{expanded[key]=!expanded[key];renderSidebar();};
+    if(cat.id) head.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('categories',cat.id,'¿Borrar la categoría? (los cursos quedan sin categoría)',boot);};
+    el.appendChild(head);
+    if(expanded[key]){
+      courses.filter(c=> cat.id? c.category_id===cat.id : !c.category_id).forEach(co=>renderCourseNode(el,co));
+      el.appendChild(mk('div','sb-add','＋ curso',()=>newCourse(cat.id)));
     }
   });
 }
+function renderCourseNode(el,co){
+  const isSel=cur.course&&cur.course.id===co.id;
+  const row=mk('div','sb-course'+(isSel?' sel':''),'');
+  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span class="nm">${esc(co.name)}</span><span class="x" title="Borrar">✕</span>`;
+  row.querySelector('.chev').onclick=(e)=>{e.stopPropagation();toggleCourse(co);};
+  row.querySelector('.nm').onclick=()=>selectCourse(co);
+  row.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('courses',co.id,'¿Borrar el curso y todo lo que contiene?',boot);};
+  el.appendChild(row);
+  if(expanded[co.id]){ (evalCache[co.id]||[]).forEach(ev=>{
+      const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
+      er.innerHTML=`📝 <span class="nm">${esc(ev.name)}</span><span class="x">✕</span>`;
+      er.querySelector('.nm').onclick=()=>selectEvaluation(ev);
+      er.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();});};
+      el.appendChild(er);
+    });
+    el.appendChild(mk('div','sb-add','＋ evaluación',()=>newEvaluation(co)));
+  }
+}
 async function loadEvals(co,force){ if(force||!evalCache[co.id]){ const {data}=await sb.from('evaluations').select('*').eq('course_id',co.id).order('created_at'); evalCache[co.id]=data||[]; } return evalCache[co.id]; }
 async function toggleCourse(co){ expanded[co.id]=!expanded[co.id]; if(expanded[co.id]) await loadEvals(co); renderSidebar(); }
+async function newCategory(){ const name=prompt('Nombre de la categoría (ej: Universidad, Colegio, 2026):'); if(!name)return;
+  const {data,error}=await sb.from('categories').insert({name}).select().single(); if(error){alert(error.message);return;} categories.push(data); expanded['cat_'+data.id]=true; renderSidebar(); }
 
 /* ---------------- ACCIONES MENÚ ---------------- */
-async function newCourse(){ const name=prompt('Nombre del curso (ej: Historia 3°A):'); if(!name)return;
-  const {data,error}=await sb.from('courses').insert({name}).select().single(); if(error){alert(error.message);return;} courses.push(data); renderSidebar(); selectCourse(data); }
+async function newCourse(catId){ const name=prompt('Nombre del curso (ej: Historia 3°A):'); if(!name)return;
+  const {data,error}=await sb.from('courses').insert({name,category_id:catId||null}).select().single(); if(error){alert(error.message);return;} courses.push(data); renderSidebar(); selectCourse(data); }
 async function newEvaluation(co){ const name=prompt('Nombre (ej: Tesis final, Control 5):'); if(!name)return;
   const type=confirm('¿Es un CONTROL/PRUEBA con varios alumnos?\n\nAceptar = Control (varios alumnos)\nCancelar = Ensayo/Tesis')?'control':'ensayo';
   const {data,error}=await sb.from('evaluations').insert({name,type,course_id:co.id}).select().single(); if(error){alert(error.message);return;}
   (evalCache[co.id]=evalCache[co.id]||[]).push(data); expanded[co.id]=true; renderSidebar(); selectEvaluation(data); }
 
 function goHome(){ cur={course:null,evaluation:null,submission:null}; crumbs(); renderSidebar(); showWelcome(); }
-async function selectCourse(co){ if(cur.submission) await saveNow(); cur={course:co,evaluation:null,submission:null}; expanded[co.id]=true; await loadEvals(co); showCorrector(false); crumbs(); renderSidebar(); renderEvaluationsMain(co); }
+async function selectCourse(co){ if(cur.submission) await saveNow(); cur={course:co,evaluation:null,submission:null}; expanded['cat_'+(co.category_id||'root')]=true; expanded[co.id]=true; await loadEvals(co); showCorrector(false); crumbs(); renderSidebar(); renderEvaluationsMain(co); }
 async function selectEvaluation(ev){ if(cur.submission) await saveNow(); const co=courses.find(c=>c.id===ev.course_id)||cur.course; cur={course:co,evaluation:ev,submission:null}; showCorrector(false); crumbs(); renderSidebar(); renderSubmissionsMain(ev); }
 
 /* ---------------- MAIN: WELCOME ---------------- */
@@ -293,9 +328,13 @@ function renderEvaluationsMain(co){
 /* ---------------- MAIN: ENTREGAS ---------------- */
 async function renderSubmissionsMain(ev){
   const v=$('#mainPanel');
-  v.innerHTML=`<h2 class="title">${esc(ev.name)}</h2><p class="hint">Sube los PDF de los alumnos. Cada uno es una entrega.</p>
+  v.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+      <h2 class="title" style="margin:0">${esc(ev.name)}</h2>
+      <button id="metBtn" class="sm">📊 Métricas</button></div>
+    <p class="hint">Sube los PDF de los alumnos. Cada uno es una entrega.</p>
     <div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir (puedes varios).</div>
     <div id="subs"><p class="hint">Cargando…</p></div>`;
+  $('#metBtn').onclick=()=>renderMetricsMain(ev);
   const drop=$('#drop');
   drop.onclick=()=>pickFiles(ev);
   drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
@@ -334,6 +373,64 @@ async function uploadSubs(files,ev){
   const t=$('#uptmp'); if(t)t.remove();
   refreshSubs(ev);
 }
+
+/* ---------------- MÉTRICAS ---------------- */
+async function renderMetricsMain(ev){
+  const v=$('#mainPanel');
+  v.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+      <h2 class="title" style="margin:0">📊 Métricas · ${esc(ev.name)}</h2>
+      <button id="toSubs" class="sm">← Entregas</button></div>
+    <p class="hint">Temas que se repiten entre alumnos, según tus comentarios.</p>
+    <div style="margin-bottom:14px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Mis temas <span style="font-weight:400;color:var(--muted)">(la IA los mide + detecta otros)</span></div>
+      <div id="themeChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;max-width:440px"><input id="themeInput" placeholder="Agregar un tema propio (ej: uso de fuentes)…"><button id="addTheme" class="sm">Agregar</button></div>
+    </div>
+    <button id="calcMet" class="primary sm">✨ Calcular métricas</button>
+    <div id="metResults" style="margin-top:16px"></div>`;
+  $('#toSubs').onclick=()=>renderSubmissionsMain(ev);
+  renderThemeChips(ev);
+  $('#addTheme').onclick=async()=>{ const t=$('#themeInput').value.trim(); if(!t)return; ev.custom_themes=(ev.custom_themes||[]).concat(t); $('#themeInput').value=''; await saveThemes(ev); renderThemeChips(ev); };
+  $('#themeInput').onkeydown=(e)=>{ if(e.key==='Enter'){e.preventDefault();$('#addTheme').click();} };
+  $('#calcMet').onclick=()=>computeMetrics(ev);
+}
+function renderThemeChips(ev){
+  const box=$('#themeChips'); if(!box)return; box.innerHTML=''; const arr=ev.custom_themes||[];
+  if(!arr.length){ box.innerHTML='<span class="hint">Aún no agregas temas propios. La IA igual detecta temas sola.</span>'; return; }
+  arr.forEach((t,i)=>{ const c=mk('span','pill',''); c.style.padding='4px 10px'; c.innerHTML=esc(t)+' <span style="cursor:pointer">✕</span>';
+    c.querySelector('span').onclick=async()=>{ ev.custom_themes.splice(i,1); await saveThemes(ev); renderThemeChips(ev); }; box.appendChild(c); });
+}
+async function saveThemes(ev){ await sb.from('evaluations').update({custom_themes:ev.custom_themes||[]}).eq('id',ev.id); }
+async function computeMetrics(ev){
+  const box=$('#metResults'); box.innerHTML='<p class="hint">Analizando comentarios con IA…</p>';
+  const {data:subs}=await sb.from('submissions').select('id,student_name').eq('evaluation_id',ev.id);
+  if(!subs||!subs.length){ box.innerHTML='<p class="hint">Aún no hay entregas para analizar.</p>'; return; }
+  const ids=subs.map(s=>s.id);
+  const {data:cms}=await sb.from('comments').select('submission_id,body,ai_text,use_ai').in('submission_id',ids);
+  const byStudent={};
+  (cms||[]).forEach(c=>{ const txt=(c.use_ai&&c.ai_text)?c.ai_text:c.body; if(!txt||!txt.trim())return;
+    const nm=(subs.find(s=>s.id===c.submission_id)||{}).student_name||'Alumno'; (byStudent[nm]=byStudent[nm]||[]).push(txt); });
+  const students=Object.keys(byStudent).map(nm=>({name:nm,comments:byStudent[nm]}));
+  if(!students.length){ box.innerHTML='<p class="hint">No hay comentarios corregidos todavía para sacar métricas.</p>'; return; }
+  let json;
+  try{ const raw=await aiCall({mode:'metrics',text:ev.custom_themes||[],comments:students}); json=JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+  catch(e){ box.innerHTML='<p class="hint">No se pudo calcular: '+esc(e.message)+'</p>'; return; }
+  const themes=(json.themes||[]).filter(t=>t&&t.students>0).sort((a,b)=>b.students-a.students);
+  const total=students.length;
+  let html=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:18px">
+      ${metCard('alumnos con comentarios',total)}${metCard('entregas',subs.length)}${metCard('temas detectados',themes.length)}</div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px">Temas que se repiten</div>`;
+  if(!themes.length) html+='<p class="hint">No se detectaron temas repetidos.</p>';
+  themes.forEach(t=>{ const pct=Math.round(100*t.students/Math.max(total,1));
+    html+=`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
+      <span>${esc(t.label)} ${t.source==='profesor'?'<span class="pill" style="font-size:9px;padding:1px 6px">mío</span>':''}</span>
+      <span style="color:var(--muted)">${pct}% · ${t.students} alumno${t.students!==1?'s':''}</span></div>
+      <div style="height:9px;background:var(--bg);border-radius:20px"><div style="width:${pct}%;height:9px;background:var(--accent);border-radius:20px"></div></div></div>`; });
+  const top=themes[0];
+  if(top && top.students/Math.max(total,1)>=0.5) html+=`<div style="margin-top:14px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:10px;padding:11px 13px;font-size:13px">💡 <b>Posible alerta de enseñanza:</b> el ${Math.round(100*top.students/total)}% coincide en "${esc(top.label)}". Quizás la consigna fue ambigua o conviene reforzar ese tema en clase.</div>`;
+  box.innerHTML=html;
+}
+function metCard(label,val){ return `<div style="background:var(--bg);border-radius:8px;padding:12px"><div style="font-size:12px;color:var(--muted)">${label}</div><div style="font-size:22px;font-weight:600">${val}</div></div>`; }
 
 /* ---------------- DOCUMENTO RÁPIDO ---------------- */
 async function quickDoc(){
@@ -515,10 +612,15 @@ $('#consBtn').onclick=async()=>{
   if(summary) html+=`<h4>Resumen</h4><p class="rc">${esc(summary)}</p>`;
   html+='<h4>Comentarios</h4>';
   list.forEach((c,i)=>html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`);
-  $('#reportContent').innerHTML=html; btn.disabled=false; btn.textContent='✨ Consolidar'; $('#reportDlg').showModal();
+  $('#reportContent').innerHTML=html;
+  const temas=(cur.evaluation&&cur.evaluation.custom_themes)||[];
+  if(temas.length){ $('#reportContent').insertAdjacentHTML('beforeend',`<div id="temasBlock" style="display:none"><h4>Temas trabajados en esta evaluación</h4><p class="rc">${temas.map(esc).join(' · ')}</p></div>`); }
+  const inc=$('#incTemas'); if(inc){ inc.checked=false; inc.onchange=()=>{ const b=$('#temasBlock'); if(b)b.style.display=inc.checked?'':'none'; }; }
+  btn.disabled=false; btn.textContent='✨ Consolidar'; $('#reportDlg').showModal();
 };
 $('#closeDlg').onclick=()=>$('#reportDlg').close();
-function repExport(){ const c=$('#reportContent').cloneNode(true); const b=c.querySelector('.banner'); if(b)b.remove(); return c.innerHTML; }
+function repExport(){ const c=$('#reportContent').cloneNode(true); const b=c.querySelector('.banner'); if(b)b.remove();
+  const inc=$('#incTemas'); const tb=c.querySelector('#temasBlock'); if(tb){ if(inc&&inc.checked) tb.style.display=''; else tb.remove(); } return c.innerHTML; }
 $('#dlDoc').onclick=()=>{ const name=cur.submission.student_name||'alumno';
   const html=`<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body style="font-family:Calibri,Arial;font-size:12pt"><h2>Retroalimentación — ${esc(name)}</h2>${repExport()}</body></html>`;
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿',html],{type:'application/msword'})); a.download='retro-'+name+'.doc'; a.click(); };
