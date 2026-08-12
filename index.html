@@ -69,6 +69,17 @@
   .shell.nosb #sidebar{display:none}
   #toggleSb{border:none;background:transparent;font-size:17px;padding:2px 6px;color:var(--muted)}
   #toggleSb:hover{color:var(--accent)}
+  table.board{border-collapse:collapse;font-size:13px}
+  table.board th,table.board td{border:1px solid var(--line);padding:7px 10px;text-align:center}
+  table.board th{background:var(--bg);font-weight:600}
+  table.board td.nm{text-align:left;font-weight:550;white-space:nowrap}
+  table.board td.cell{cursor:pointer;user-select:none;font-size:15px}
+  table.board td.cell:hover{background:var(--accent-soft)}
+  table.board td.cell.on{background:#dcfce7}
+  #recFab{position:fixed;right:26px;bottom:26px;z-index:40;background:var(--danger);color:#fff;border:none;width:auto;
+          padding:13px 20px;border-radius:30px;font-size:14px;font-weight:600;box-shadow:0 5px 16px rgba(0,0,0,.22);cursor:pointer}
+  #recFab:hover{filter:brightness(1.05)}
+  #recFab.rec-on{background:var(--accent)}
 
   #mainPanel{flex:1;min-width:0;padding:22px 24px;overflow:auto;max-height:calc(100vh - 47px)}
   h2.title{font-size:18px;margin:0 0 2px}
@@ -172,6 +183,7 @@
   </div>
 
   <div id="corrector">
+    <button id="recFab">🎤 Comentar</button>
     <div class="cor-top">
       <button id="backCor" class="sm">← Volver</button>
       <span id="corTitle" style="font-weight:600;font-size:14px"></span>
@@ -328,19 +340,56 @@ function renderEvaluationsMain(co){
 /* ---------------- MAIN: ENTREGAS ---------------- */
 async function renderSubmissionsMain(ev){
   const v=$('#mainPanel');
-  v.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+  v.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap">
       <h2 class="title" style="margin:0">${esc(ev.name)}</h2>
-      <button id="metBtn" class="sm">📊 Métricas</button></div>
+      <button id="metBtn" class="sm">📊 Métricas</button>
+      <button id="secBtn" class="sm">⚙️ Secciones</button></div>
     <p class="hint">Sube los PDF de los alumnos. Cada uno es una entrega.</p>
     <div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir (puedes varios).</div>
     <div id="subs"><p class="hint">Cargando…</p></div>`;
   $('#metBtn').onclick=()=>renderMetricsMain(ev);
+  $('#secBtn').onclick=()=>editSections(ev);
   const drop=$('#drop');
   drop.onclick=()=>pickFiles(ev);
   drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
   drop.addEventListener('dragleave',e=>{e.preventDefault();drop.classList.remove('drag');});
   drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag'); if(e.dataTransfer.files.length) uploadSubs(e.dataTransfer.files,ev);});
-  refreshSubs(ev);
+  refreshEval(ev);
+}
+function refreshEval(ev){ if((ev.sections||[]).length) refreshBoard(ev); else refreshSubs(ev); }
+function editSections(ev){
+  const v=$('#mainPanel');
+  v.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+      <h2 class="title" style="margin:0">⚙️ Secciones · ${esc(ev.name)}</h2>
+      <button id="toSubs2" class="sm">← Volver</button></div>
+    <p class="hint">Divide la evaluación en partes (ej: Pregunta 1, 2, 3… o Introducción, Conclusión). Si la dejas vacía, la evaluación es simple: sin tabla, solo corregido / pendiente.</p>
+    <div id="secChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;max-width:440px"><input id="secInput" placeholder="Agregar sección (ej: Pregunta 1)…"><button id="addSec" class="sm">Agregar</button></div>`;
+  $('#toSubs2').onclick=()=>renderSubmissionsMain(ev);
+  renderSecChips(ev);
+  $('#addSec').onclick=async()=>{ const t=$('#secInput').value.trim(); if(!t)return; ev.sections=(ev.sections||[]).concat(t); $('#secInput').value=''; await saveSections(ev); renderSecChips(ev); };
+  $('#secInput').onkeydown=(e)=>{ if(e.key==='Enter'){e.preventDefault();$('#addSec').click();} };
+}
+function renderSecChips(ev){ const box=$('#secChips'); if(!box)return; box.innerHTML=''; const arr=ev.sections||[];
+  if(!arr.length){ box.innerHTML='<span class="hint">Sin secciones → evaluación simple.</span>'; return; }
+  arr.forEach((t,i)=>{ const c=mk('span','pill',''); c.style.padding='4px 10px'; c.innerHTML=esc(t)+' <span style="cursor:pointer">✕</span>';
+    c.querySelector('span').onclick=async()=>{ ev.sections.splice(i,1); await saveSections(ev); renderSecChips(ev); }; box.appendChild(c); }); }
+async function saveSections(ev){ await sb.from('evaluations').update({sections:ev.sections||[]}).eq('id',ev.id); }
+async function refreshBoard(ev){
+  const {data}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
+  const box=$('#subs'); if(!box)return; const secs=ev.sections||[];
+  if(!(data||[]).length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
+  let done=0; const total=data.length*secs.length; let rows='';
+  data.forEach(s=>{ const prog=s.section_progress||{}; rows+='<tr><td class="nm">'+esc(s.student_name||'Entrega')+'</td>';
+    secs.forEach(sec=>{ const on=prog[sec]==='corregido'; if(on)done++; rows+=`<td class="cell${on?' on':''}" data-sub="${s.id}" data-sec="${esc(sec)}">${on?'✅':'⬜'}</td>`; });
+    rows+='<td><button class="sm open" data-sub="'+s.id+'">Corregir</button></td></tr>'; });
+  const pct=total?Math.round(100*done/total):0;
+  box.innerHTML=`<div style="margin-bottom:8px;font-size:13px;color:var(--muted)">Avance: <b style="color:var(--ink)">${done}/${total}</b> celdas · ${pct}% · haz clic en una celda para marcarla corregida</div>
+    <div style="overflow-x:auto"><table class="board"><thead><tr><th>Alumno</th>${secs.map(s=>'<th>'+esc(s)+'</th>').join('')}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  box.querySelectorAll('.cell').forEach(td=>{ td.onclick=async()=>{ const sid=td.dataset.sub,sec=td.dataset.sec; const sObj=data.find(x=>x.id===sid); const prog=sObj.section_progress||{};
+    if(prog[sec]==='corregido') delete prog[sec]; else prog[sec]='corregido'; sObj.section_progress=prog;
+    await sb.from('submissions').update({section_progress:prog}).eq('id',sid); refreshBoard(ev); }; });
+  box.querySelectorAll('.open').forEach(b=>{ b.onclick=()=>openSubmission(data.find(x=>x.id===b.dataset.sub)); });
 }
 async function refreshSubs(ev){
   const {data}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
@@ -371,7 +420,7 @@ async function uploadSubs(files,ev){
     await sb.from('submissions').insert({evaluation_id:ev.id,student_name:f.name.replace(/\.pdf$/i,''),file_path:path});
   }
   const t=$('#uptmp'); if(t)t.remove();
-  refreshSubs(ev);
+  refreshEval(ev);
 }
 
 /* ---------------- MÉTRICAS ---------------- */
@@ -511,7 +560,7 @@ async function renderPage(n){
   drawHighlightsForPage(n);
 }
 
-$('#rec').onclick=()=>{
+function toggleRec(){
   if(recording){ stopRec(); return; }
   const sel=window.getSelection();
   if(!sel.rangeCount||sel.isCollapsed){ alert('Selecciona con el mouse el texto a comentar.'); return; }
@@ -524,7 +573,8 @@ $('#rec').onclick=()=>{
   const id='c'+Date.now();
   comments.push({id,page:+pageEl.dataset.page,rects,quote:sel.toString().trim(),text:'',aiText:'',useAi:false});
   sel.removeAllRanges(); recTarget=id; renderList(); drawAllHighlights(); focusC(id); startRec(); scheduleSave();
-};
+}
+$('#rec').onclick=toggleRec; $('#recFab').onclick=toggleRec;
 
 function drawHighlightsForPage(n){
   const wrap=document.querySelector('.page[data-page="'+n+'"]'); if(!wrap)return;
@@ -550,7 +600,8 @@ function startRec(){ recognition=initRec(); if(!recognition){recTarget=null;retu
 function stopRec(){ recording=false; recUI(false);
   if(recognition){ try{recognition.stop();}catch(e){} recognition=null; }
   const c=getC(recTarget); if(c)c.text=c.text.trim(); recTarget=null; renderList(); scheduleSave(); }
-function recUI(on){ $('#rec').textContent=on?'⏹ Detener':'🎤 Comentar selección'; $('#rec').classList.toggle('primary',on); $('#rec').classList.toggle('rec',!on); $('#live').classList.toggle('on',on); }
+function recUI(on){ $('#rec').textContent=on?'⏹ Detener':'🎤 Comentar selección'; $('#rec').classList.toggle('primary',on); $('#rec').classList.toggle('rec',!on); $('#live').classList.toggle('on',on);
+  const fab=$('#recFab'); if(fab){ fab.textContent=on?'⏹ Detener':'🎤 Comentar'; fab.classList.toggle('rec-on',on); } }
 
 /* lista */
 const getC=id=>comments.find(c=>c.id===id);
