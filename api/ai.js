@@ -7,7 +7,7 @@
 
 // Si este modelo diera error, reemplázalo por el vigente que veas
 // en console.anthropic.com  (ej: claude-sonnet-4, claude-3-5-sonnet-latest, etc.)
-const MODEL = 'claude-3-5-sonnet-latest';
+const MODEL = 'claude-haiku-4-5-20251001';
 
 export default async function handler(req, res) {
   // Permitir que la página (aunque corra en otro origen, ej. Live Server) le hable
