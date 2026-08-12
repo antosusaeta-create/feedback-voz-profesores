@@ -281,8 +281,11 @@ $('#loginBtn').onclick=async()=>{ const {error}=await sb.auth.signInWithPassword
 $('#signupBtn').onclick=async()=>{ const {data,error}=await sb.auth.signUp({email:$('#email').value.trim(),password:$('#pass').value});
   if(error){authMsg(error.message);return;} authMsg(data.session?'¡Cuenta creada!':'Cuenta creada. Si pide confirmar correo, confírmalo o desactiva "Confirm email" en Supabase.',true); };
 $('#logout').onclick=async()=>{ await saveNow(); await sb.auth.signOut(); };
-sb.auth.onAuthStateChange((_e,session)=>{ user=session?.user||null;
-  if(user){ $('#auth').style.display='none'; $('#app').style.display='block'; $('#who').textContent=user.email; boot(); }
+let currentUid=null;
+sb.auth.onAuthStateChange((_e,session)=>{ const u=session?.user||null;
+  if(u && u.id===currentUid) return;   // sesión ya activa (refresh al volver de otra pestaña): no reiniciar
+  user=u; currentUid=u?u.id:null;
+  if(u){ $('#auth').style.display='none'; $('#app').style.display='block'; $('#who').textContent=u.email; boot(); }
   else{ $('#auth').style.display='flex'; $('#app').style.display='none'; } });
 
 /* ---------------- ARRANQUE ---------------- */
