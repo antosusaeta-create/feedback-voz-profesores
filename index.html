@@ -466,8 +466,9 @@ function renderScoresCfg(ev){ const box=$('#scoresCfg'); if(!box)return; const s
     <p class="hint" style="margin-bottom:8px">Pon el puntaje máximo de cada sección para sumar totales y calcular nota. Déjalo vacío si no usas puntajes.</p>
     <div style="display:flex;flex-direction:column;gap:6px;max-width:360px">${secs.map(s=>`<div style="display:flex;gap:8px;align-items:center"><span style="flex:1;font-size:13px">${esc(s)}</span><input type="number" class="smax" data-sec="${esc(s)}" value="${(ev.section_max||{})[s]??''}" placeholder="máx" style="width:90px"></div>`).join('')}</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px;max-width:360px"><span style="flex:1;font-size:13px">Exigencia % (para nota 4.0)</span><input type="number" id="exig" value="${ev.exigencia??60}" style="width:90px"></div>`;
-  box.querySelectorAll('.smax').forEach(inp=>{ inp.onchange=async()=>{ const m={...(ev.section_max||{})}; const v=inp.value.trim(); if(v) m[inp.dataset.sec]=Number(v); else delete m[inp.dataset.sec]; ev.section_max=m; await sb.from('evaluations').update({section_max:m}).eq('id',ev.id); }; });
-  $('#exig').onchange=async()=>{ ev.exigencia=Number($('#exig').value)||60; await sb.from('evaluations').update({exigencia:ev.exigencia}).eq('id',ev.id); }; }
+  box.querySelectorAll('.smax').forEach(inp=>{ inp.onchange=async()=>{ const m={...(ev.section_max||{})}; const v=inp.value.trim(); if(v) m[inp.dataset.sec]=Number(v); else delete m[inp.dataset.sec]; ev.section_max=m;
+    const {error}=await sb.from('evaluations').update({section_max:m}).eq('id',ev.id); if(error) alert('No se pudo guardar: '+error.message+'\n\n¿Corriste el SQL de la Fase 3?'); }; });
+  $('#exig').onchange=async()=>{ ev.exigencia=Number($('#exig').value)||60; const {error}=await sb.from('evaluations').update({exigencia:ev.exigencia}).eq('id',ev.id); if(error) alert('No se pudo guardar la exigencia: '+error.message); }; }
 async function saveSections(ev){ await sb.from('evaluations').update({sections:ev.sections||[]}).eq('id',ev.id); }
 async function refreshBoard(ev){
   const box=$('#subs'); if(!box)return; const secs=ev.sections||[];
@@ -514,7 +515,10 @@ async function refreshBoard(ev){
     if(isDone(prog[sec])) delete prog[sec]; else prog[sec]={done:true,by:user.email}; sObj.section_progress=prog;
     await sb.from('submissions').update({section_progress:prog}).eq('id',sObj.id); refreshBoard(ev); }; });
   box.querySelectorAll('.score').forEach(inp=>{ inp.onchange=async()=>{ const sObj=data.find(x=>x.id===inp.dataset.sub); const m={...(sObj.scores||{})}; const v=inp.value.trim();
-    if(v) m[inp.dataset.sec]=Number(v); else delete m[inp.dataset.sec]; sObj.scores=m; await sb.from('submissions').update({scores:m}).eq('id',sObj.id); refreshBoard(ev); }; });
+    if(v) m[inp.dataset.sec]=Number(v); else delete m[inp.dataset.sec]; sObj.scores=m;
+    const {error}=await sb.from('submissions').update({scores:m}).eq('id',sObj.id);
+    if(error){ alert('No se pudo guardar el puntaje: '+error.message+'\n\n¿Corriste el SQL de la Fase 3 (columna scores)?'); return; }
+    refreshBoard(ev); }; });
   box.querySelectorAll('.open').forEach(b=>{ b.onclick=()=>openSubmission(data.find(x=>x.id===b.dataset.sub)); });
   const exp=$('#expCsv'); if(exp) exp.onclick=()=>exportCsv(ev,data);
 }
