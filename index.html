@@ -249,7 +249,8 @@
 <dialog id="reportDlg">
   <div class="dlg-head"><h3 style="margin:0;font-size:15px">Reporte para el alumno</h3>
     <span style="font-size:12px;color:var(--muted)">✏️ editable</span>
-    <label style="font-size:12px;display:flex;gap:5px;align-items:center;margin-left:auto"><input type="checkbox" id="incTemas"> incluir temas</label>
+    <label style="font-size:12px;display:flex;gap:5px;align-items:center;margin-left:auto"><input type="checkbox" id="incTemas"> temas</label>
+    <label style="font-size:12px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="incPunt"> puntajes</label>
     <span style="display:flex;gap:8px">
       <button id="dlDoc" class="sm">⬇️ .doc</button>
       <button id="dlPdf" class="primary sm">🖨️ PDF</button>
@@ -273,6 +274,8 @@ let courses=[], categories=[], sharedEvals=[], evalCache={}, expanded={};
 function isDone(v){ return v==='corregido' || (v&&typeof v==='object'&&v.done); }
 function shortMail(e){ return (e||'').split('@')[0]; }
 function trafficColor(p){ return p<20?'#dc2626':p<50?'#f97316':p<80?'#f59e0b':'#059669'; }
+function computeGrade(p,t,e){ if(!t) return null; e=(e||60)/100; let pct=p/t; if(pct<0)pct=0; if(pct>1)pct=1;
+  let n = pct<e ? 1+3*pct/e : 4+3*(pct-e)/(1-e); return Math.round(n*10)/10; }
 function statusColor(st){ return (st==='corregido'||st==='enviado')?'#059669':st==='en_progreso'?'#f59e0b':'#dc2626'; }
 
 /* ---------------- AUTH ---------------- */
@@ -445,7 +448,8 @@ function editSections(ev){
       <button id="toSubs2" class="sm">← Volver</button></div>
     <p class="hint">Divide la evaluación en partes (ej: Pregunta 1, 2, 3… o Introducción, Conclusión). Si la dejas vacía, la evaluación es simple: sin tabla, solo corregido / pendiente.</p>
     <div id="secChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px;max-width:440px"><input id="secInput" placeholder="Agregar sección (ej: Pregunta 1)…"><button id="addSec" class="sm">Agregar</button></div>`;
+    <div style="display:flex;gap:8px;max-width:440px"><input id="secInput" placeholder="Agregar sección (ej: Pregunta 1)…"><button id="addSec" class="sm">Agregar</button></div>
+    <div id="scoresCfg"></div>`;
   $('#toSubs2').onclick=()=>renderSubmissionsMain(ev);
   renderSecChips(ev);
   $('#addSec').onclick=async()=>{ const t=$('#secInput').value.trim(); if(!t)return; ev.sections=(ev.sections||[]).concat(t); $('#secInput').value=''; await saveSections(ev); renderSecChips(ev); };
@@ -454,7 +458,16 @@ function editSections(ev){
 function renderSecChips(ev){ const box=$('#secChips'); if(!box)return; box.innerHTML=''; const arr=ev.sections||[];
   if(!arr.length){ box.innerHTML='<span class="hint">Sin secciones → evaluación simple.</span>'; return; }
   arr.forEach((t,i)=>{ const c=mk('span','pill',''); c.style.padding='4px 10px'; c.innerHTML=esc(t)+' <span style="cursor:pointer">✕</span>';
-    c.querySelector('span').onclick=async()=>{ ev.sections.splice(i,1); await saveSections(ev); renderSecChips(ev); }; box.appendChild(c); }); }
+    c.querySelector('span').onclick=async()=>{ ev.sections.splice(i,1); await saveSections(ev); renderSecChips(ev); }; box.appendChild(c); });
+  renderScoresCfg(ev); }
+function renderScoresCfg(ev){ const box=$('#scoresCfg'); if(!box)return; const secs=ev.sections||[];
+  if(!secs.length){ box.innerHTML=''; return; }
+  box.innerHTML=`<div style="font-size:13px;font-weight:600;margin:18px 0 4px">Puntajes (opcional)</div>
+    <p class="hint" style="margin-bottom:8px">Pon el puntaje máximo de cada sección para sumar totales y calcular nota. Déjalo vacío si no usas puntajes.</p>
+    <div style="display:flex;flex-direction:column;gap:6px;max-width:360px">${secs.map(s=>`<div style="display:flex;gap:8px;align-items:center"><span style="flex:1;font-size:13px">${esc(s)}</span><input type="number" class="smax" data-sec="${esc(s)}" value="${(ev.section_max||{})[s]??''}" placeholder="máx" style="width:90px"></div>`).join('')}</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;max-width:360px"><span style="flex:1;font-size:13px">Exigencia % (para nota 4.0)</span><input type="number" id="exig" value="${ev.exigencia??60}" style="width:90px"></div>`;
+  box.querySelectorAll('.smax').forEach(inp=>{ inp.onchange=async()=>{ const m={...(ev.section_max||{})}; const v=inp.value.trim(); if(v) m[inp.dataset.sec]=Number(v); else delete m[inp.dataset.sec]; ev.section_max=m; await sb.from('evaluations').update({section_max:m}).eq('id',ev.id); }; });
+  $('#exig').onchange=async()=>{ ev.exigencia=Number($('#exig').value)||60; await sb.from('evaluations').update({exigencia:ev.exigencia}).eq('id',ev.id); }; }
 async function saveSections(ev){ await sb.from('evaluations').update({sections:ev.sections||[]}).eq('id',ev.id); }
 async function refreshBoard(ev){
   const box=$('#subs'); if(!box)return; const secs=ev.sections||[];
@@ -466,33 +479,51 @@ async function refreshBoard(ev){
   const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
   const assign=ev.section_assignments||{};
   if(!data.length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
+  const maxMap=ev.section_max||{}; const hasScores=secs.some(s=>maxMap[s]);
   let done=0; const total=data.length*secs.length; let rows='';
-  data.forEach(s=>{ const prog=s.section_progress||{};
+  data.forEach(s=>{ const prog=s.section_progress||{}; const sc=s.scores||{};
     let sdone=0; secs.forEach(sec=>{ if(isDone(prog[sec]))sdone++; }); done+=sdone;
     const spct=secs.length?Math.round(100*sdone/secs.length):0;
     const rowOpts=['<option value="">—</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${s.assignee===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
     rows+=`<tr><td><span class="light" style="background:${trafficColor(spct)}"></span>${spct}%</td><td class="nm">${esc(s.student_name||'Entrega')}</td>`;
+    let rowTot=0,rowMax=0;
     secs.forEach(sec=>{ const on=isDone(prog[sec]); const who=assign[sec]||s.assignee;
       const tag=who?`<div style="font-size:9px;color:var(--muted);margin-top:2px">${esc(shortMail(who))}</div>`:'';
-      rows+=`<td class="cell" data-sub="${s.id}" data-sec="${esc(sec)}"><span class="bdot${on?' done':''}">✓</span>${tag}</td>`; });
+      const mx=maxMap[sec]; let scoreI='';
+      if(mx){ rowMax+=Number(mx); rowTot+=Number(sc[sec]||0);
+        scoreI=`<div style="margin-top:3px;font-size:11px;color:var(--muted)"><input class="score" data-sub="${s.id}" data-sec="${esc(sec)}" type="number" value="${sc[sec]??''}" style="width:42px;padding:2px;font-size:11px">/${mx}</div>`; }
+      rows+=`<td class="cell"><span class="bdot${on?' done':''} dotc" data-sub="${s.id}" data-sec="${esc(sec)}">✓</span>${tag}${scoreI}</td>`; });
+    if(hasScores){ const nota=rowMax?computeGrade(rowTot,rowMax,ev.exigencia):null;
+      rows+=`<td>${rowMax?rowTot+'/'+rowMax:'—'}</td><td><b>${nota!=null?nota.toFixed(1):'—'}</b></td>`; }
     rows+=`<td><select class="asgRow" data-sub="${s.id}" style="width:auto;font-size:11px;padding:3px">${rowOpts}</select></td>`;
     rows+=`<td><button class="bopen open" data-sub="${s.id}">Corregir →</button></td></tr>`; });
   const pct=total?Math.round(100*done/total):0;
   const heads=secs.map(sec=>{ const c=assign[sec]||'';
     const opts=['<option value="">— asignar —</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${c===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
     return `<th>${esc(sec)}<br><select class="asignCol" data-sec="${esc(sec)}" style="font-size:10px;padding:2px;margin-top:4px;width:auto">${opts}</select></th>`; }).join('');
-  box.innerHTML=`<div style="font-size:13px;color:var(--muted)"><span class="light" style="background:${trafficColor(pct)}"></span>Avance <b style="color:var(--ink)">${done}/${total}</b> · ${pct}%</div>
+  const scoreHeads=hasScores?'<th>Total</th><th>Nota</th>':'';
+  box.innerHTML=`<div style="font-size:13px;color:var(--muted);display:flex;align-items:center"><span class="light" style="background:${trafficColor(pct)}"></span>Avance <b style="color:var(--ink);margin:0 4px">${done}/${total}</b> · ${pct}%<button id="expCsv" class="sm" style="margin-left:14px">⬇️ Exportar Excel</button></div>
     <div class="pbar"><div style="width:${pct}%;background:${trafficColor(pct)}"></div></div>
-    <div style="overflow-x:auto"><table class="board"><thead><tr><th>Estado</th><th style="text-align:left">Alumno</th>${heads}<th>Responsable</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin-top:8px">Reparte por <b>sección</b> (encabezado) o por <b>alumno</b> (columna Responsable). Marca los círculos o usa el popup al salir.</p>`;
+    <div style="overflow-x:auto"><table class="board"><thead><tr><th>Estado</th><th style="text-align:left">Alumno</th>${heads}${scoreHeads}<th>Responsable</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin-top:8px">Reparte por <b>sección</b> (encabezado) o por <b>alumno</b> (Responsable). Puntajes: pon el máximo en ⚙️ Secciones.</p>`;
   box.querySelectorAll('.asignCol').forEach(sel=>{ sel.onchange=async()=>{ const na={...assign}; if(sel.value) na[sel.dataset.sec]=sel.value; else delete na[sel.dataset.sec];
     ev.section_assignments=na; await sb.from('evaluations').update({section_assignments:na}).eq('id',ev.id); refreshBoard(ev); }; });
   box.querySelectorAll('.asgRow').forEach(sel=>{ sel.onchange=async()=>{ const sObj=data.find(x=>x.id===sel.dataset.sub); sObj.assignee=sel.value||null;
     await sb.from('submissions').update({assignee:sObj.assignee}).eq('id',sObj.id); refreshBoard(ev); }; });
-  box.querySelectorAll('.cell').forEach(td=>{ td.onclick=async()=>{ const sid=td.dataset.sub,sec=td.dataset.sec; const sObj=data.find(x=>x.id===sid); const prog=sObj.section_progress||{};
+  box.querySelectorAll('.dotc').forEach(d=>{ d.onclick=async()=>{ const sObj=data.find(x=>x.id===d.dataset.sub); const prog=sObj.section_progress||{}; const sec=d.dataset.sec;
     if(isDone(prog[sec])) delete prog[sec]; else prog[sec]={done:true,by:user.email}; sObj.section_progress=prog;
-    await sb.from('submissions').update({section_progress:prog}).eq('id',sid); refreshBoard(ev); }; });
+    await sb.from('submissions').update({section_progress:prog}).eq('id',sObj.id); refreshBoard(ev); }; });
+  box.querySelectorAll('.score').forEach(inp=>{ inp.onchange=async()=>{ const sObj=data.find(x=>x.id===inp.dataset.sub); const m={...(sObj.scores||{})}; const v=inp.value.trim();
+    if(v) m[inp.dataset.sec]=Number(v); else delete m[inp.dataset.sec]; sObj.scores=m; await sb.from('submissions').update({scores:m}).eq('id',sObj.id); refreshBoard(ev); }; });
   box.querySelectorAll('.open').forEach(b=>{ b.onclick=()=>openSubmission(data.find(x=>x.id===b.dataset.sub)); });
+  const exp=$('#expCsv'); if(exp) exp.onclick=()=>exportCsv(ev,data);
+}
+function exportCsv(ev,data){ const secs=ev.sections||[]; const maxMap=ev.section_max||{};
+  const rows=[['Alumno',...secs,'Total','Máximo','Nota']];
+  data.forEach(s=>{ const sc=s.scores||{}; let tot=0,mx=0; const cells=secs.map(sec=>{ tot+=Number(sc[sec]||0); mx+=Number(maxMap[sec]||0); return sc[sec]??''; });
+    const nota=mx?computeGrade(tot,mx,ev.exigencia):''; rows.push([s.student_name||'',...cells,tot,mx,(nota!=null?nota:'')]); });
+  const csv=rows.map(r=>r.map(c=>{ c=''+c; return /[",\n;]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c; }).join(',')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'})); a.download='puntajes-'+(ev.name||'evaluacion')+'.csv'; a.click();
 }
 async function openCollab(ev){
   $('#colTitle').textContent='Colaboradores · '+ev.name;
@@ -648,12 +679,15 @@ function askProgress(){
   return new Promise(resolve=>{
     const ev=cur.evaluation, sub=cur.submission; if(!ev||!sub){ resolve(); return; }
     if((ev.sections||[]).length){
-      const prog=sub.section_progress||{};
-      $('#secDlgBody').innerHTML=(ev.sections||[]).map(s=>`<label style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;font-size:14px;cursor:pointer"><input type="checkbox" data-sec="${esc(s)}" ${isDone(prog[s])?'checked':''}> ${esc(s)}</label>`).join('');
+      const prog=sub.section_progress||{}; const sc=sub.scores||{}; const maxMap=ev.section_max||{};
+      $('#secDlgBody').innerHTML=(ev.sections||[]).map(s=>{ const mx=maxMap[s];
+        const si=mx?`<span style="margin-left:auto;font-size:13px;color:var(--muted)"><input type="number" class="pscore" data-sec="${esc(s)}" value="${sc[s]??''}" style="width:64px;padding:3px" placeholder="pts"> /${mx}</span>`:'';
+        return `<label style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;font-size:14px"><input type="checkbox" data-sec="${esc(s)}" ${isDone(prog[s])?'checked':''}> ${esc(s)} ${si}</label>`; }).join('');
       const dlg=$('#secDlg');
-      $('#secDlgSave').onclick=async()=>{ const np={...prog};
-        $('#secDlgBody').querySelectorAll('input').forEach(inp=>{ const s=inp.dataset.sec; if(inp.checked) np[s]={done:true,by:user.email}; else delete np[s]; });
-        sub.section_progress=np; await sb.from('submissions').update({section_progress:np}).eq('id',sub.id); dlg.close(); resolve(); };
+      $('#secDlgSave').onclick=async()=>{ const np={...prog}, nsc={...sc};
+        $('#secDlgBody').querySelectorAll('input[type=checkbox]').forEach(inp=>{ const s=inp.dataset.sec; if(inp.checked) np[s]={done:true,by:user.email}; else delete np[s]; });
+        $('#secDlgBody').querySelectorAll('.pscore').forEach(inp=>{ const s=inp.dataset.sec; const v=inp.value.trim(); if(v) nsc[s]=Number(v); else delete nsc[s]; });
+        sub.section_progress=np; sub.scores=nsc; await sb.from('submissions').update({section_progress:np,scores:nsc}).eq('id',sub.id); dlg.close(); resolve(); };
       $('#secDlgSkip').onclick=()=>{ dlg.close(); resolve(); };
       dlg.showModal();
     } else {
@@ -812,11 +846,19 @@ $('#consBtn').onclick=async()=>{
   const temas=(cur.evaluation&&cur.evaluation.custom_themes)||[];
   if(temas.length){ $('#reportContent').insertAdjacentHTML('beforeend',`<div id="temasBlock" style="display:none"><h4>Temas trabajados en esta evaluación</h4><p class="rc">${temas.map(esc).join(' · ')}</p></div>`); }
   const inc=$('#incTemas'); if(inc){ inc.checked=false; inc.onchange=()=>{ const b=$('#temasBlock'); if(b)b.style.display=inc.checked?'':'none'; }; }
+  const ev2=cur.evaluation, sub2=cur.submission; const maxMap=(ev2&&ev2.section_max)||{}; const sc=(sub2&&sub2.scores)||{};
+  const secsMax=((ev2&&ev2.sections)||[]).filter(s=>maxMap[s]);
+  if(secsMax.length){ let tot=0,mx=0; const lines=secsMax.map(s=>{ tot+=Number(sc[s]||0); mx+=Number(maxMap[s]||0); return `${esc(s)}: ${sc[s]??'—'} / ${maxMap[s]}`; });
+    const nota=mx?computeGrade(tot,mx,ev2.exigencia):null;
+    $('#reportContent').insertAdjacentHTML('beforeend',`<div id="puntBlock" style="display:none"><h4>Puntajes</h4><p class="rc">${lines.join('<br>')}<br><b>Total: ${tot} / ${mx}</b>${nota!=null?` · <b>Nota: ${nota.toFixed(1)}</b>`:''}</p></div>`); }
+  const incp=$('#incPunt'); if(incp){ incp.checked=false; incp.onchange=()=>{ const b=$('#puntBlock'); if(b)b.style.display=incp.checked?'':'none'; }; }
   btn.disabled=false; btn.textContent='✨ Consolidar'; $('#reportDlg').showModal();
 };
 $('#closeDlg').onclick=()=>$('#reportDlg').close();
 function repExport(){ const c=$('#reportContent').cloneNode(true); const b=c.querySelector('.banner'); if(b)b.remove();
-  const inc=$('#incTemas'); const tb=c.querySelector('#temasBlock'); if(tb){ if(inc&&inc.checked) tb.style.display=''; else tb.remove(); } return c.innerHTML; }
+  const inc=$('#incTemas'); const tb=c.querySelector('#temasBlock'); if(tb){ if(inc&&inc.checked) tb.style.display=''; else tb.remove(); }
+  const incp=$('#incPunt'); const pb=c.querySelector('#puntBlock'); if(pb){ if(incp&&incp.checked) pb.style.display=''; else pb.remove(); }
+  return c.innerHTML; }
 $('#dlDoc').onclick=()=>{ const name=cur.submission.student_name||'alumno';
   const html=`<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body style="font-family:Calibri,Arial;font-size:12pt"><h2>Retroalimentación — ${esc(name)}</h2>${repExport()}</body></html>`;
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿',html],{type:'application/msword'})); a.download='retro-'+name+'.doc'; a.click(); };
