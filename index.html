@@ -68,6 +68,11 @@
   .sb-course .nm,.sb-eval .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sb-eval{padding-left:34px}
   .shell.nosb #sidebar{display:none}
+  .sb-course .ed,.sb-eval .ed,.sb-cat .ed{opacity:0;color:var(--muted);font-size:12px;cursor:pointer;margin-left:4px}
+  .sb-course:hover .ed,.sb-eval:hover .ed,.sb-cat:hover .ed{opacity:.75}
+  .sb-course .ed:hover,.sb-eval .ed:hover,.sb-cat .ed:hover{color:var(--accent);opacity:1}
+  .sb-course[draggable],.sb-eval[draggable]{cursor:grab}
+  .dropinto{background:var(--accent-soft)!important}
   #toggleSb{border:none;background:transparent;font-size:17px;padding:2px 6px;color:var(--muted)}
   #toggleSb:hover{color:var(--accent)}
   table.board{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -248,16 +253,28 @@
 
 <dialog id="reportDlg">
   <div class="dlg-head"><h3 style="margin:0;font-size:15px">Reporte para el alumno</h3>
-    <span style="font-size:12px;color:var(--muted)">✏️ editable</span>
-    <label style="font-size:12px;display:flex;gap:5px;align-items:center;margin-left:auto"><input type="checkbox" id="incTemas"> temas</label>
-    <label style="font-size:12px;display:flex;gap:5px;align-items:center"><input type="checkbox" id="incPunt"> puntajes</label>
-    <span style="display:flex;gap:8px">
-      <button id="dlDoc" class="sm">⬇️ .doc</button>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button id="dlDoc" class="sm">⬇️ Word</button>
       <button id="dlPdf" class="primary sm">🖨️ PDF</button>
       <button id="closeDlg" class="sm">Cerrar</button>
     </span>
   </div>
-  <div class="dlg-body"><div id="reportContent" class="report" contenteditable="true"></div></div>
+  <div class="dlg-body">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)">
+      <b style="width:100%;color:var(--muted);font-size:11px;letter-spacing:.3px">QUÉ INCLUIR EN EL REPORTE</b>
+      <label><input type="checkbox" id="tgSummary" checked> Consolidado</label>
+      <label><input type="checkbox" id="tgComments" checked> Comentarios</label>
+      <label><input type="checkbox" id="tgPunt"> Puntajes</label>
+      <label><input type="checkbox" id="tgNota"> Nota</label>
+      <label><input type="checkbox" id="tgTemas"> Temas</label>
+      <label><input type="checkbox" id="tgObs"> Otras observaciones</label>
+    </div>
+    <div id="reportContent" class="report" contenteditable="true"></div>
+    <div id="obsWrap" style="display:none;margin-top:12px">
+      <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px">Otras observaciones (opcional)</div>
+      <textarea id="obsText" style="width:100%;min-height:70px"></textarea>
+    </div>
+  </div>
 </dialog>
 
 <script>
@@ -270,7 +287,7 @@ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudf
 const $=s=>document.querySelector(s);
 let user=null;
 let cur={course:null,evaluation:null,submission:null};
-let courses=[], categories=[], sharedEvals=[], evalCache={}, expanded={};
+let courses=[], categories=[], sharedEvals=[], evalCache={}, expanded={}, drag=null;
 function isDone(v){ return v==='corregido' || (v&&typeof v==='object'&&v.done); }
 function shortMail(e){ return (e||'').split('@')[0]; }
 function trafficColor(p){ return p<20?'#dc2626':p<50?'#f97316':p<80?'#f59e0b':'#059669'; }
@@ -293,7 +310,7 @@ sb.auth.onAuthStateChange((_e,session)=>{ const u=session?.user||null;
 
 /* ---------------- ARRANQUE ---------------- */
 async function boot(){
-  const [cats,cos]=await Promise.all([ sb.from('categories').select('*').order('created_at'), sb.from('courses').select('*').order('created_at') ]);
+  const [cats,cos]=await Promise.all([ sb.from('categories').select('*').order('position').order('created_at'), sb.from('courses').select('*').order('position').order('created_at') ]);
   categories=cats.data||[]; courses=cos.data||[]; sharedEvals=await loadSharedEvals(); applySb(); renderSidebar(); showWelcome();
 }
 async function loadSharedEvals(){
@@ -326,10 +343,14 @@ function renderSidebar(){
     const key='cat_'+(cat.id||'root');
     if(expanded[key]===undefined) expanded[key]=true;
     const head=mk('div','sb-cat','');
-    head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">${esc(cat.name)}</span>`+(cat.id?'<span class="x" title="Borrar categoría">✕</span>':'');
+    head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">${esc(cat.name)}</span>`+(cat.id?'<span class="ed" title="Renombrar">✎</span><span class="x" title="Borrar categoría">✕</span>':'');
     head.querySelector('.chev').onclick=(e)=>{e.stopPropagation();expanded[key]=!expanded[key];renderSidebar();};
     head.querySelector('.nm').onclick=()=>{expanded[key]=!expanded[key];renderSidebar();};
-    if(cat.id) head.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('categories',cat.id,'¿Borrar la categoría? (los cursos quedan sin categoría)',boot);};
+    if(cat.id){ head.querySelector('.ed').onclick=(e)=>{e.stopPropagation();renameItem('categories',cat);};
+      head.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('categories',cat.id,'¿Borrar la categoría? (los cursos quedan sin categoría)',boot);}; }
+    head.ondragover=(e)=>{ if(drag&&drag.type==='course'){ e.preventDefault(); head.classList.add('dropinto'); } };
+    head.ondragleave=()=>head.classList.remove('dropinto');
+    head.ondrop=()=>{ head.classList.remove('dropinto'); if(drag&&drag.type==='course') moveCourse(drag.id,cat.id,null); };
     el.appendChild(head);
     if(expanded[key]){
       courses.filter(c=> cat.id? c.category_id===cat.id : !c.category_id).forEach(co=>renderCourseNode(el,co));
@@ -347,23 +368,52 @@ function renderSidebar(){
 }
 function renderCourseNode(el,co){
   const isSel=cur.course&&cur.course.id===co.id;
-  const row=mk('div','sb-course'+(isSel?' sel':''),'');
-  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span class="nm">${esc(co.name)}</span><span class="x" title="Borrar">✕</span>`;
+  const row=mk('div','sb-course'+(isSel?' sel':''),''); row.setAttribute('draggable','true');
+  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span class="nm">${esc(co.name)}</span><span class="ed" title="Renombrar">✎</span><span class="x" title="Borrar">✕</span>`;
   row.querySelector('.chev').onclick=(e)=>{e.stopPropagation();toggleCourse(co);};
   row.querySelector('.nm').onclick=()=>selectCourse(co);
+  row.querySelector('.ed').onclick=(e)=>{e.stopPropagation();renameItem('courses',co);};
   row.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('courses',co.id,'¿Borrar el curso y todo lo que contiene?',boot);};
+  row.ondragstart=(e)=>{ drag={type:'course',id:co.id}; e.dataTransfer.effectAllowed='move'; };
+  row.ondragover=(e)=>{ if(drag&&drag.type==='course'&&drag.id!==co.id){ e.preventDefault(); row.style.borderTop='2px solid var(--accent)'; } };
+  row.ondragleave=()=>{ row.style.borderTop=''; };
+  row.ondrop=(e)=>{ row.style.borderTop=''; if(drag&&drag.type==='course'&&drag.id!==co.id) moveCourse(drag.id,co.category_id,co.id); };
   el.appendChild(row);
   if(expanded[co.id]){ (evalCache[co.id]||[]).forEach(ev=>{
-      const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
-      er.innerHTML=`📝 <span class="nm">${esc(ev.name)}</span><span class="x">✕</span>`;
+      const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),''); er.setAttribute('draggable','true');
+      er.innerHTML=`📝 <span class="nm">${esc(ev.name)}</span><span class="ed" title="Renombrar">✎</span><span class="x">✕</span>`;
       er.querySelector('.nm').onclick=()=>selectEvaluation(ev);
+      er.querySelector('.ed').onclick=(e)=>{e.stopPropagation();renameItem('evaluations',ev,()=>{loadEvals(co,true).then(renderSidebar);});};
       er.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();});};
+      er.ondragstart=(e)=>{ drag={type:'eval',id:ev.id,course:co.id}; e.stopPropagation(); e.dataTransfer.effectAllowed='move'; };
+      er.ondragover=(e)=>{ if(drag&&drag.type==='eval'&&drag.course===co.id&&drag.id!==ev.id){ e.preventDefault(); er.style.borderTop='2px solid var(--accent)'; } };
+      er.ondragleave=()=>{ er.style.borderTop=''; };
+      er.ondrop=(e)=>{ er.style.borderTop=''; if(drag&&drag.type==='eval'&&drag.course===co.id&&drag.id!==ev.id) moveEval(drag.id,ev.id,co.id); };
       el.appendChild(er);
     });
     el.appendChild(mk('div','sb-add','＋ evaluación',()=>newEvaluation(co)));
   }
 }
-async function loadEvals(co,force){ if(force||!evalCache[co.id]){ const {data}=await sb.from('evaluations').select('*').eq('course_id',co.id).order('created_at'); evalCache[co.id]=data||[]; } return evalCache[co.id]; }
+async function renameItem(table,obj,cb){ const n=prompt('Nuevo nombre:',obj.name); if(n===null||!n.trim())return; obj.name=n.trim();
+  const {error}=await sb.from(table).update({name:obj.name}).eq('id',obj.id); if(error){alert(error.message);return;} (cb||renderSidebar)(); }
+async function moveCourse(draggedId,destCatId,beforeCourseId){
+  const dragged=courses.find(c=>c.id===draggedId); if(!dragged)return; dragged.category_id=destCatId||null;
+  let list=courses.filter(c=>c.id!==draggedId && (destCatId? c.category_id===destCatId : !c.category_id)).sort((a,b)=>(a.position||0)-(b.position||0));
+  const idx=beforeCourseId?list.findIndex(c=>c.id===beforeCourseId):list.length; list.splice(idx<0?list.length:idx,0,dragged);
+  list.forEach((c,i)=>c.position=i);
+  drag=null;
+  await Promise.all(list.map(c=>sb.from('courses').update({category_id:c.category_id,position:c.position}).eq('id',c.id)));
+  renderSidebar();
+}
+async function moveEval(draggedId,beforeId,courseId){
+  const evs=evalCache[courseId]; if(!evs)return; const dragged=evs.find(e=>e.id===draggedId); if(!dragged)return;
+  let list=evs.filter(e=>e.id!==draggedId).sort((a,b)=>(a.position||0)-(b.position||0));
+  const idx=beforeId?list.findIndex(e=>e.id===beforeId):list.length; list.splice(idx<0?list.length:idx,0,dragged);
+  list.forEach((e,i)=>e.position=i); evalCache[courseId]=list; drag=null;
+  await Promise.all(list.map(e=>sb.from('evaluations').update({position:e.position}).eq('id',e.id)));
+  renderSidebar();
+}
+async function loadEvals(co,force){ if(force||!evalCache[co.id]){ const {data}=await sb.from('evaluations').select('*').eq('course_id',co.id).order('position').order('created_at'); evalCache[co.id]=data||[]; } return evalCache[co.id]; }
 async function toggleCourse(co){ expanded[co.id]=!expanded[co.id]; if(expanded[co.id]) await loadEvals(co); renderSidebar(); }
 async function newCategory(){ const name=prompt('Nombre de la categoría (ej: Universidad, Colegio, 2026):'); if(!name)return;
   const {data,error}=await sb.from('categories').insert({name}).select().single(); if(error){alert(error.message);return;} categories.push(data); expanded['cat_'+data.id]=true; renderSidebar(); }
@@ -497,7 +547,7 @@ async function refreshBoard(ev){
     if(hasScores){ const nota=rowMax?computeGrade(rowTot,rowMax,ev.exigencia):null;
       rows+=`<td>${rowMax?rowTot+'/'+rowMax:'—'}</td><td><b>${nota!=null?nota.toFixed(1):'—'}</b></td>`; }
     rows+=`<td><select class="asgRow" data-sub="${s.id}" style="width:auto;font-size:11px;padding:3px">${rowOpts}</select></td>`;
-    rows+=`<td><button class="bopen open" data-sub="${s.id}">Corregir →</button></td></tr>`; });
+    rows+=`<td style="white-space:nowrap"><button class="bopen open" data-sub="${s.id}">Corregir</button> <button class="bopen rep" data-sub="${s.id}" title="Ver reporte">📄</button></td></tr>`; });
   const pct=total?Math.round(100*done/total):0;
   const heads=secs.map(sec=>{ const c=assign[sec]||'';
     const opts=['<option value="">— asignar —</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${c===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
@@ -520,14 +570,18 @@ async function refreshBoard(ev){
     if(error){ alert('No se pudo guardar el puntaje: '+error.message+'\n\n¿Corriste el SQL de la Fase 3 (columna scores)?'); return; }
     refreshBoard(ev); }; });
   box.querySelectorAll('.open').forEach(b=>{ b.onclick=()=>openSubmission(data.find(x=>x.id===b.dataset.sub)); });
-  const exp=$('#expCsv'); if(exp) exp.onclick=()=>exportCsv(ev,data);
+  box.querySelectorAll('.rep').forEach(b=>{ b.onclick=()=>openReport(data.find(x=>x.id===b.dataset.sub)); });
+  const exp=$('#expCsv'); if(exp) exp.onclick=()=>exportXls(ev,data);
 }
-function exportCsv(ev,data){ const secs=ev.sections||[]; const maxMap=ev.section_max||{};
-  const rows=[['Alumno',...secs,'Total','Máximo','Nota']];
+function exportXls(ev,data){ const secs=ev.sections||[]; const maxMap=ev.section_max||{};
+  const cellS='border:1px solid #bbb;padding:6px;text-align:center'; const nmS='border:1px solid #bbb;padding:6px';
+  const head=['Alumno',...secs,'Total','Máximo','Nota'].map(h=>`<th style="background:#eef2ff;${cellS}">${esc(h)}</th>`).join('');
+  let body='';
   data.forEach(s=>{ const sc=s.scores||{}; let tot=0,mx=0; const cells=secs.map(sec=>{ tot+=Number(sc[sec]||0); mx+=Number(maxMap[sec]||0); return sc[sec]??''; });
-    const nota=mx?computeGrade(tot,mx,ev.exigencia):''; rows.push([s.student_name||'',...cells,tot,mx,(nota!=null?nota:'')]); });
-  const csv=rows.map(r=>r.map(c=>{ c=''+c; return /[",\n;]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c; }).join(',')).join('\n');
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'})); a.download='puntajes-'+(ev.name||'evaluacion')+'.csv'; a.click();
+    const nota=mx?computeGrade(tot,mx,ev.exigencia):'';
+    body+=`<tr><td style="${nmS}">${esc(s.student_name||'')}</td>${cells.map(c=>`<td style="${cellS}">${c}</td>`).join('')}<td style="${cellS}">${tot}</td><td style="${cellS}">${mx}</td><td style="${cellS}"><b>${nota!=null?nota:''}</b></td></tr>`; });
+  const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body><table style="border-collapse:collapse;font-family:Arial;font-size:13px"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+html],{type:'application/vnd.ms-excel'})); a.download='puntajes-'+(ev.name||'evaluacion')+'.xls'; a.click();
 }
 async function openCollab(ev){
   $('#colTitle').textContent='Colaboradores · '+ev.name;
@@ -558,7 +612,8 @@ async function refreshSubs(ev){
       <span class="status ${s.status}">${statusLabel(s.status)}</span>
       <select class="asg" style="width:auto;font-size:12px;padding:5px 7px;margin-left:auto">${opts}</select>
       <span style="display:flex;gap:6px">
-        <button class="sm open">Corregir</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button></span>`;
+        <button class="sm open">Corregir</button><button class="sm rep" title="Ver reporte">📄</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button></span>`;
+    el.querySelector('.rep').onclick=()=>openReport(s);
     el.querySelector('.lightbtn').onclick=async()=>{ const order=['pendiente','en_progreso','corregido']; const nx=order[(order.indexOf(s.status)+1)%3]; s.status=nx; await sb.from('submissions').update({status:nx}).eq('id',s.id); refreshSubs(ev); };
     el.querySelector('.asg').onchange=async(e)=>{ s.assignee=e.target.value||null; await sb.from('submissions').update({assignee:s.assignee}).eq('id',s.id); };
     el.querySelector('.open').onclick=()=>openSubmission(s);
@@ -842,27 +897,44 @@ $('#consBtn').onclick=async()=>{
   let summary='',note='';
   if(list.length){ try{ summary=await aiCall({mode:'consolidate',doc:cur.submission.student_name||'',comments:list.map(c=>({quote:c.quote,text:finalText(c)}))}); }
     catch(e){ summary=`Se realizaron ${list.length} observaciones sobre tu trabajo. Revisa cada comentario junto a la parte del texto correspondiente.`; note='🤖 IA no disponible. Resumen básico; editable.'; } }
-  let html=note?`<div class="banner">${note}</div>`:'';
-  if(summary) html+=`<h4>Resumen</h4><p class="rc">${esc(summary)}</p>`;
-  html+='<h4>Comentarios</h4>';
-  list.forEach((c,i)=>html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`);
-  $('#reportContent').innerHTML=html;
-  const temas=(cur.evaluation&&cur.evaluation.custom_themes)||[];
-  if(temas.length){ $('#reportContent').insertAdjacentHTML('beforeend',`<div id="temasBlock" style="display:none"><h4>Temas trabajados en esta evaluación</h4><p class="rc">${temas.map(esc).join(' · ')}</p></div>`); }
-  const inc=$('#incTemas'); if(inc){ inc.checked=false; inc.onchange=()=>{ const b=$('#temasBlock'); if(b)b.style.display=inc.checked?'':'none'; }; }
-  const ev2=cur.evaluation, sub2=cur.submission; const maxMap=(ev2&&ev2.section_max)||{}; const sc=(sub2&&sub2.scores)||{};
-  const secsMax=((ev2&&ev2.sections)||[]).filter(s=>maxMap[s]);
-  if(secsMax.length){ let tot=0,mx=0; const lines=secsMax.map(s=>{ tot+=Number(sc[s]||0); mx+=Number(maxMap[s]||0); return `${esc(s)}: ${sc[s]??'—'} / ${maxMap[s]}`; });
-    const nota=mx?computeGrade(tot,mx,ev2.exigencia):null;
-    $('#reportContent').insertAdjacentHTML('beforeend',`<div id="puntBlock" style="display:none"><h4>Puntajes</h4><p class="rc">${lines.join('<br>')}<br><b>Total: ${tot} / ${mx}</b>${nota!=null?` · <b>Nota: ${nota.toFixed(1)}</b>`:''}</p></div>`); }
-  const incp=$('#incPunt'); if(incp){ incp.checked=false; incp.onchange=()=>{ const b=$('#puntBlock'); if(b)b.style.display=incp.checked?'':'none'; }; }
-  btn.disabled=false; btn.textContent='✨ Consolidar'; $('#reportDlg').showModal();
+  cur.submission.summary=summary; if(summary) await sb.from('submissions').update({summary}).eq('id',cur.submission.id);
+  btn.disabled=false; btn.textContent='✨ Consolidar';
+  buildReport(cur.submission, cur.evaluation, list, summary, note);
 };
+async function openReport(sub){
+  cur.submission=sub;
+  const {data}=await sb.from('comments').select('*').eq('submission_id',sub.id).order('position');
+  const list=(data||[]).map(c=>({quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai})).filter(c=>finalText(c).trim());
+  buildReport(sub, cur.evaluation, list, sub.summary||('Se realizaron '+list.length+' observación(es) sobre el trabajo.'), '');
+}
+function buildReport(sub, ev, list, summary, note){
+  const maxMap=(ev&&ev.section_max)||{}; const sc=sub.scores||{}; const secsMax=((ev&&ev.sections)||[]).filter(s=>maxMap[s]);
+  let tot=0,mx=0; secsMax.forEach(s=>{ tot+=Number(sc[s]||0); mx+=Number(maxMap[s]||0); });
+  const nota=mx?computeGrade(tot,mx,ev.exigencia):null; const temas=(ev&&ev.custom_themes)||[];
+  let html=note?`<div class="banner">${note}</div>`:'';
+  html+=`<div id="blkSummary"><h4>Resumen de la corrección</h4><p class="rc">${esc(summary||'')}</p></div>`;
+  html+='<div id="blkComments"><h4>Comentarios</h4>'+(list.length?'':'<p class="rc" style="color:#999">Sin comentarios.</p>');
+  list.forEach((c,i)=>html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`);
+  html+='</div>';
+  if(secsMax.length){
+    html+=`<div id="blkPunt" style="display:none"><h4>Puntajes</h4><table class="board" style="font-size:13px"><thead><tr><th style="text-align:left">Sección</th><th>Puntaje</th><th>Máximo</th></tr></thead><tbody>${secsMax.map(s=>`<tr><td class="nm">${esc(s)}</td><td>${sc[s]??'—'}</td><td>${maxMap[s]}</td></tr>`).join('')}<tr><td class="nm"><b>Total</b></td><td><b>${tot}</b></td><td><b>${mx}</b></td></tr></tbody></table></div>`;
+    html+=`<div id="blkNota" style="display:none"><h4>Nota final</h4><p class="rc" style="font-size:17px"><b>${nota!=null?nota.toFixed(1):'—'}</b></p></div>`;
+  }
+  if(temas.length) html+=`<div id="blkTemas" style="display:none"><h4>Temas de la evaluación</h4><p class="rc">${temas.map(esc).join(' · ')}</p></div>`;
+  $('#reportContent').innerHTML=html;
+  $('#obsText').value=sub.observations||'';
+  $('#obsText').onchange=async()=>{ sub.observations=$('#obsText').value; await sb.from('submissions').update({observations:sub.observations}).eq('id',sub.id); };
+  [['tgSummary','blkSummary',true],['tgComments','blkComments',true],['tgPunt','blkPunt',false],['tgNota','blkNota',false],['tgTemas','blkTemas',false]].forEach(([tg,blk,def])=>{
+    const cb=$('#'+tg); if(!cb)return; cb.checked=def; const el=document.getElementById(blk);
+    cb.onchange=()=>{ if(el) el.style.display=cb.checked?'':'none'; }; if(el) el.style.display=cb.checked?'':'none'; });
+  const obsCb=$('#tgObs'); obsCb.checked=false; obsCb.onchange=()=>{ $('#obsWrap').style.display=obsCb.checked?'':'none'; }; $('#obsWrap').style.display='none';
+  $('#reportDlg').showModal();
+}
 $('#closeDlg').onclick=()=>$('#reportDlg').close();
 function repExport(){ const c=$('#reportContent').cloneNode(true); const b=c.querySelector('.banner'); if(b)b.remove();
-  const inc=$('#incTemas'); const tb=c.querySelector('#temasBlock'); if(tb){ if(inc&&inc.checked) tb.style.display=''; else tb.remove(); }
-  const incp=$('#incPunt'); const pb=c.querySelector('#puntBlock'); if(pb){ if(incp&&incp.checked) pb.style.display=''; else pb.remove(); }
-  return c.innerHTML; }
+  c.querySelectorAll('[id^="blk"]').forEach(el=>{ if(el.style.display==='none') el.remove(); });
+  let extra=''; if($('#tgObs')&&$('#tgObs').checked && $('#obsText').value.trim()) extra=`<h4>Otras observaciones</h4><p class="rc">${esc($('#obsText').value)}</p>`;
+  return c.innerHTML+extra; }
 $('#dlDoc').onclick=()=>{ const name=cur.submission.student_name||'alumno';
   const html=`<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body style="font-family:Calibri,Arial;font-size:12pt"><h2>Retroalimentación — ${esc(name)}</h2>${repExport()}</body></html>`;
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿',html],{type:'application/msword'})); a.download='retro-'+name+'.doc'; a.click(); };
