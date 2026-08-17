@@ -966,7 +966,7 @@ async function saveNow(){
   const rows=comments.map((c,i)=>({submission_id:sid,page:c.page,rects:c.rects,quote:c.quote,body:c.text,ai_text:c.aiText,use_ai:c.useAi,position:i,author:c.author||user.email,resolved:!!c.resolved,replies:c.replies||[]}));
   let err=(await sb.from('comments').delete().eq('submission_id',sid)).error;
   if(!err && rows.length) err=(await sb.from('comments').insert(rows)).error;
-  if(!err){ const st=comments.length?'corregido':'pendiente'; await sb.from('submissions').update({status:st}).eq('id',sid); if(cur.submission)cur.submission.status=st; }
+  // El estado (pendiente/falta/corregido) lo decide el profe, no el autoguardado.
   saving=false; setSaveState(err?('⚠️ '+err.message):'✅ Guardado');
 }
 $('#saveBtn').onclick=()=>saveNow();
