@@ -60,6 +60,10 @@
   .sb-eval .x{margin-left:auto;opacity:0;font-size:12px}.sb-eval:hover .x{opacity:.7}.sb-eval .x:hover{color:var(--danger)}
   .sb-add{font-size:12px;color:var(--muted);padding:5px 9px 5px 34px;cursor:pointer}
   .sb-add:hover{color:var(--accent)}
+  .sb-add-course{font-size:12px;color:var(--muted);padding:6px 9px 6px 12px;cursor:pointer}
+  .sb-add-course:hover{color:var(--accent)}
+  #sbResize{width:6px;flex:0 0 auto;cursor:col-resize;background:transparent}
+  #sbResize:hover{background:var(--line)}
   .sb-cat{display:flex;align-items:center;gap:7px;padding:9px 8px;margin-top:8px;font-size:14px;font-weight:800;color:var(--ink);cursor:pointer;border-radius:8px}
   .sb-cat:hover{background:var(--bg)}
   .sb-cat .chev{font-size:11px;color:var(--muted);width:12px}
@@ -192,6 +196,7 @@
     <span class="brand"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="9" y1="21" x2="15" y2="21"/></svg>Feedback por Voz</span>
     <span class="crumbs" id="crumbs"></span>
     <span class="right">
+      <button id="quickBtn" class="sm">⚡ Documento rápido</button>
       <span style="position:relative">
         <button id="bell" class="sm" style="position:relative">🔔<span id="bellBadge" style="display:none;position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;font-size:9px;min-width:15px;height:15px;border-radius:20px;line-height:15px;text-align:center;padding:0 3px"></span></button>
         <div id="notifPanel" style="display:none;position:absolute;right:0;top:34px;width:270px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:30;max-height:340px;overflow:auto"></div>
@@ -201,6 +206,7 @@
 
   <div class="shell" id="shell">
     <aside id="sidebar"></aside>
+    <div id="sbResize"></div>
     <main id="mainPanel"></main>
   </div>
 
@@ -347,8 +353,13 @@ async function acceptInvite(id){ await sb.from('collaborators').update({status:'
 async function rejectInvite(id){ await sb.from('collaborators').update({status:'rejected'}).eq('id',id); await loadInvitations(); renderBell(); renderNotif(); }
 $('#bell').onclick=(e)=>{ e.stopPropagation(); const p=$('#notifPanel'); const show=(p.style.display==='none'||!p.style.display); if(show){ renderNotif(); p.style.display='block'; } else p.style.display='none'; };
 document.addEventListener('click',()=>{ const p=$('#notifPanel'); if(p) p.style.display='none'; });
-function applySb(){ $('#shell').classList.toggle('nosb', localStorage.getItem('sbHidden')==='1'); }
+function applySb(){ $('#shell').classList.toggle('nosb', localStorage.getItem('sbHidden')==='1'); const w=localStorage.getItem('sbWidth'); if(w) $('#sidebar').style.width=w+'px'; }
 $('#toggleSb').onclick=()=>{ const h=localStorage.getItem('sbHidden')==='1'; localStorage.setItem('sbHidden',h?'0':'1'); applySb(); };
+$('#quickBtn').onclick=()=>quickDoc();
+(function(){ const r=$('#sbResize'); if(!r)return; let on=false;
+  r.addEventListener('mousedown',e=>{ on=true; e.preventDefault(); document.body.style.userSelect='none'; });
+  document.addEventListener('mousemove',e=>{ if(!on)return; const w=Math.max(160,Math.min(460,e.clientX)); $('#sidebar').style.width=w+'px'; localStorage.setItem('sbWidth',w); });
+  document.addEventListener('mouseup',()=>{ on=false; document.body.style.userSelect=''; }); })();
 function showCorrector(on){ $('#corrector').style.display=on?'block':'none'; $('#shell').style.display=on?'none':'flex'; }
 
 /* ---------------- CRUMBS ---------------- */
@@ -363,26 +374,27 @@ function crumbs(){ const c=$('#crumbs'); c.innerHTML='';
 /* ---------------- SIDEBAR ---------------- */
 function renderSidebar(){
   const el=$('#sidebar'); el.innerHTML='';
-  el.appendChild(mk('div','sb-btn sb-quick','⚡ Documento rápido',quickDoc));
   el.appendChild(mk('div','sb-btn sb-new','＋ Nueva categoría',newCategory));
-  const groups=[{id:null,name:'CURSOS'}].concat(categories);
-  groups.forEach(cat=>{
-    const key='cat_'+(cat.id||'root');
-    if(expanded[key]===undefined) expanded[key]=true;
+  const bCurso=mk('div','sb-btn sb-new','＋ Nuevo curso',()=>newCourse(null));
+  bCurso.ondragover=(e)=>{ if(drag&&drag.type==='course'){ e.preventDefault(); bCurso.classList.add('dropinto'); } };
+  bCurso.ondragleave=()=>bCurso.classList.remove('dropinto');
+  bCurso.ondrop=()=>{ bCurso.classList.remove('dropinto'); if(drag&&drag.type==='course') moveCourse(drag.id,null,null); };
+  el.appendChild(bCurso);
+  courses.filter(c=>!c.category_id && c.name!=='⚡ Documentos rápidos').forEach(co=>renderCourseNode(el,co));
+  categories.forEach(cat=>{
+    const key='cat_'+cat.id; if(expanded[key]===undefined) expanded[key]=true;
     const head=mk('div','sb-cat','');
-    head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">${esc(cat.name)}</span>`+(cat.id?'<span class="ed" title="Renombrar">✎</span><span class="x" title="Borrar categoría">✕</span>':'');
+    head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">${esc(cat.name)}</span><span class="ed" title="Renombrar">✎</span><span class="x" title="Borrar categoría">✕</span>`;
     head.querySelector('.chev').onclick=(e)=>{e.stopPropagation();expanded[key]=!expanded[key];renderSidebar();};
     head.querySelector('.nm').onclick=()=>{expanded[key]=!expanded[key];renderSidebar();};
-    if(cat.id){ head.querySelector('.ed').onclick=(e)=>{e.stopPropagation();renameItem('categories',cat);};
-      head.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('categories',cat.id,'¿Borrar la categoría? (los cursos quedan sin categoría)',boot);}; }
+    head.querySelector('.ed').onclick=(e)=>{e.stopPropagation();renameItem('categories',cat);};
+    head.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('categories',cat.id,'¿Borrar la categoría? (los cursos quedan sin categoría)',boot);};
     head.ondragover=(e)=>{ if(drag&&drag.type==='course'){ e.preventDefault(); head.classList.add('dropinto'); } };
     head.ondragleave=()=>head.classList.remove('dropinto');
     head.ondrop=()=>{ head.classList.remove('dropinto'); if(drag&&drag.type==='course') moveCourse(drag.id,cat.id,null); };
     el.appendChild(head);
-    if(expanded[key]){
-      courses.filter(c=> cat.id? c.category_id===cat.id : !c.category_id).forEach(co=>renderCourseNode(el,co));
-      el.appendChild(mk('div','sb-add','＋ curso',()=>newCourse(cat.id)));
-    }
+    if(expanded[key]){ courses.filter(c=>c.category_id===cat.id).forEach(co=>renderCourseNode(el,co));
+      el.appendChild(mk('div','sb-add-course','＋ curso',()=>newCourse(cat.id))); }
   });
   if(sharedEvals.length){
     const key='cat_shared'; if(expanded[key]===undefined) expanded[key]=true;
@@ -448,9 +460,8 @@ async function newCategory(){ const name=prompt('Nombre de la categoría (ej: Un
 /* ---------------- ACCIONES MENÚ ---------------- */
 async function newCourse(catId){ const name=prompt('Nombre del curso (ej: Historia 3°A):'); if(!name)return;
   const {data,error}=await sb.from('courses').insert({name,category_id:catId||null}).select().single(); if(error){alert(error.message);return;} courses.push(data); renderSidebar(); selectCourse(data); }
-async function newEvaluation(co){ const name=prompt('Nombre (ej: Tesis final, Control 5):'); if(!name)return;
-  const type=confirm('¿Es un CONTROL/PRUEBA con varios alumnos?\n\nAceptar = Control (varios alumnos)\nCancelar = Ensayo/Tesis')?'control':'ensayo';
-  const {data,error}=await sb.from('evaluations').insert({name,type,course_id:co.id}).select().single(); if(error){alert(error.message);return;}
+async function newEvaluation(co){ const name=prompt('Nombre de la evaluación (ej: Control 5, Tesis, Ensayo):'); if(!name)return;
+  const {data,error}=await sb.from('evaluations').insert({name,type:'ensayo',course_id:co.id}).select().single(); if(error){alert(error.message);return;}
   (evalCache[co.id]=evalCache[co.id]||[]).push(data); expanded[co.id]=true; renderSidebar(); selectEvaluation(data); }
 
 function goHome(){ cur={course:null,evaluation:null,submission:null}; crumbs(); renderSidebar(); showWelcome(); }
