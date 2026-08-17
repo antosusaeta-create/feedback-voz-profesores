@@ -154,6 +154,19 @@
   .cmt .r{display:flex;gap:6px;margin-top:6px;align-items:center}
   .cmt .aiBtn{background:#7c3aed;color:#fff;border-color:#7c3aed;font-size:12px;padding:5px 9px}
   .cmt .del{margin-left:auto;color:var(--danger);border-color:transparent;padding:5px 7px}
+  .cmt.resolved{opacity:.62}
+  .cmt.resolved .cbody,.cmt.resolved .own{text-decoration:line-through}
+  .cbody{font-size:13px;margin:5px 0;color:var(--ink)}
+  .cmeta{font-size:11px;color:var(--muted);margin-top:2px}
+  .cfilter{display:flex;gap:5px;flex-wrap:wrap;padding:2px 0 10px;position:sticky;top:0;background:var(--panel);z-index:1}
+  .cf{font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg);color:var(--muted);cursor:pointer}
+  .cf.on{background:var(--accent);color:#fff}
+  .rep{font-size:12.5px;background:var(--bg);border-radius:7px;padding:6px 8px;margin-top:5px}
+  .repdel{color:var(--danger);cursor:pointer;float:right;margin-left:6px}
+  .repadd{display:flex;gap:6px;margin-top:7px}
+  .repadd input{font-size:12.5px;padding:6px 8px}
+  .resolveBtn{font-size:12px;padding:5px 9px}
+  .hlBox.res{background:rgba(148,163,184,.4)}
   .reclive{font-size:12px;color:var(--danger);font-weight:600;display:none;gap:6px;align-items:center}
   .reclive.on{display:flex}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--danger);animation:pulse 1s infinite}
@@ -773,7 +786,7 @@ async function openSubmission(s){
   pdfDoc=await pdfjsLib.getDocument({data:ab}).promise;
   await renderAll();
   const {data}=await sb.from('comments').select('*').eq('submission_id',s.id).order('position');
-  comments=(data||[]).map(c=>({id:'c'+c.id,page:c.page,rects:c.rects||[],quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai}));
+  comments=(data||[]).map(c=>({id:'c'+c.id,page:c.page,rects:c.rects||[],quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai,author:c.author||'',resolved:!!c.resolved,replies:c.replies||[]}));
   renderList(); drawAllHighlights();
 }
 $('#backCor').onclick=async()=>{ await saveNow(); await askProgress(); selectEvaluation(cur.evaluation); };
@@ -852,7 +865,7 @@ function toggleRec(){
   const rects=[...range.getClientRects()].map(r=>({x:(r.left-pr.left)/pr.width,y:(r.top-pr.top)/pr.height,w:r.width/pr.width,h:r.height/pr.height})).filter(r=>r.w>0&&r.h>0);
   if(!rects.length){ alert('No se pudo anclar.'); return; }
   const id='c'+Date.now();
-  comments.push({id,page:+pageEl.dataset.page,rects,quote:sel.toString().trim(),text:'',aiText:'',useAi:false});
+  comments.push({id,page:+pageEl.dataset.page,rects,quote:sel.toString().trim(),text:'',aiText:'',useAi:false,author:user.email,resolved:false,replies:[]});
   sel.removeAllRanges(); recTarget=id; renderList(); drawAllHighlights(); focusC(id); startRec(); scheduleSave();
 }
 $('#rec').onclick=toggleRec; $('#recFab').onclick=toggleRec;
@@ -862,7 +875,7 @@ function drawHighlightsForPage(n){
   const layer=wrap.querySelector('.hlLayer'); if(!layer)return; layer.innerHTML='';
   const W=wrap.clientWidth,H=wrap.clientHeight;
   comments.filter(c=>c.page===n).forEach(c=>{ c.rects.forEach(r=>{
-    const b=mk('div','hlBox'+(c.id===activeId?' active':''),''); b.style.left=r.x*W+'px'; b.style.top=r.y*H+'px'; b.style.width=r.w*W+'px'; b.style.height=r.h*H+'px';
+    const b=mk('div','hlBox'+(c.id===activeId?' active':'')+(c.resolved?' res':''),''); b.style.left=r.x*W+'px'; b.style.top=r.y*H+'px'; b.style.width=r.w*W+'px'; b.style.height=r.h*H+'px';
     b.onclick=()=>focusC(c.id); layer.appendChild(b); }); });
 }
 function drawAllHighlights(){ Object.keys(pageState).forEach(n=>{ if(pageState[n].rendered||document.querySelector('.page[data-page="'+n+'"] .hlLayer')) drawHighlightsForPage(+n); }); }
@@ -888,31 +901,57 @@ function recUI(on){ $('#rec').textContent=on?'⏹ Detener':'🎤 Comentar selecc
 const getC=id=>comments.find(c=>c.id===id);
 function focusC(id){ activeId=id; renderList(); drawAllHighlights();
   const el=document.querySelector('.cmt[data-id="'+id+'"]'); if(el)el.scrollIntoView({behavior:'smooth',block:'center'}); }
+let commentFilter='todos';
 function renderList(){
-  const box=$('#list');
-  if(!comments.length){ box.innerHTML='<div class="hint" style="padding:20px 4px;text-align:center">Selecciona texto y presiona <b>Comentar selección</b>.</div>'; return; }
-  box.innerHTML='';
-  comments.forEach((c,i)=>{
-    const d=mk('div','cmt'+(c.id===activeId?' active':''),''); d.dataset.id=c.id;
+  const box=$('#list'); const FILT={todos:'Todos',activos:'Activos',resueltos:'Resueltos',respondidos:'Respondidos',sinresp:'Sin responder'};
+  const bar=`<div class="cfilter">${Object.keys(FILT).map(f=>`<span class="cf${commentFilter===f?' on':''}" data-f="${f}">${FILT[f]}</span>`).join('')}</div>`;
+  let list=comments.slice();
+  if(commentFilter==='activos') list=list.filter(c=>!c.resolved);
+  else if(commentFilter==='resueltos') list=list.filter(c=>c.resolved);
+  else if(commentFilter==='respondidos') list=list.filter(c=>(c.replies||[]).length>0);
+  else if(commentFilter==='sinresp') list=list.filter(c=>!(c.replies||[]).length && !c.resolved);
+  if(!comments.length){ box.innerHTML=bar+'<div class="hint" style="padding:20px 4px;text-align:center">Selecciona texto y presiona <b>Comentar selección</b>.</div>'; }
+  else if(!list.length){ box.innerHTML=bar+'<div class="hint" style="padding:16px 4px;text-align:center">Nada en este filtro.</div>'; }
+  else { box.innerHTML=bar; list.forEach(c=>box.appendChild(renderCommentCard(c))); }
+  box.querySelectorAll('.cf').forEach(f=>f.onclick=()=>{ commentFilter=f.dataset.f; renderList(); });
+}
+function renderCommentCard(c){
+  const active=c.id===activeId;
+  const d=mk('div','cmt'+(active?' active':'')+(c.resolved?' resolved':''),''); d.dataset.id=c.id;
+  if(!active){
     d.innerHTML=`<div class="q">pág. ${c.page} · “${esc(c.quote)}”</div>
-      <textarea class="own" placeholder="Comentario…">${esc(c.text)}</textarea>
-      <div class="r"><button class="aiBtn">✨ Optimizar IA</button><button class="del">🗑</button></div><div class="aiWrap"></div>`;
-    const own=d.querySelector('.own'); own.oninput=()=>{c.text=own.value; scheduleSave();}; own.onfocus=()=>focusC(c.id);
-    const aiBtn=d.querySelector('.aiBtn');
-    aiBtn.onclick=async()=>{ if(!c.text.trim()){alert('Escribe o dicta primero.');return;} aiBtn.disabled=true; aiBtn.innerHTML='<span class="spin"></span>';
-      try{ c.aiText=await aiCall({mode:'optimize',text:c.text,quote:c.quote}); c.useAi=true; }catch(e){ alert('No se pudo usar la IA: '+e.message); }
-      renderList(); scheduleSave(); };
-    d.querySelector('.del').onclick=()=>{ comments=comments.filter(x=>x.id!==c.id); if(activeId===c.id)activeId=null; renderList(); drawAllHighlights(); scheduleSave(); };
-    if(c.aiText){ const w=d.querySelector('.aiWrap');
-      w.innerHTML=`<div class="ai"><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-bottom:3px">✨ Versión IA (editable)</div>
-        <textarea class="aiT">${esc(c.aiText)}</textarea>
-        <div class="pick"><label><input type="radio" name="p${c.id}" class="pO" ${!c.useAi?'checked':''}> La mía</label>
-        <label><input type="radio" name="p${c.id}" class="pA" ${c.useAi?'checked':''}> La de IA</label></div></div>`;
-      w.querySelector('.aiT').oninput=e=>{c.aiText=e.target.value; scheduleSave();};
-      w.querySelector('.pO').onchange=()=>{c.useAi=false; scheduleSave();}; w.querySelector('.pA').onchange=()=>{c.useAi=true; scheduleSave();};
-    }
-    box.appendChild(d);
-  });
+      <div class="cbody">${esc(((c.useAi&&c.aiText)?c.aiText:c.text)||'(sin texto)')}</div>
+      <div class="cmeta">${esc(shortMail(c.author||''))}${(c.replies||[]).length?' · '+c.replies.length+' resp':''}${c.resolved?' · ✓ resuelto':''}</div>`;
+    d.onclick=()=>focusC(c.id); return d;
+  }
+  const reps=(c.replies||[]).map((r,ri)=>`<div class="rep"><span class="repdel" data-ri="${ri}">✕</span><b>${esc(shortMail(r.author||''))}:</b> ${esc(r.text)}</div>`).join('');
+  d.innerHTML=`<div class="q">pág. ${c.page} · “${esc(c.quote)}”</div>
+    <div class="cmeta">${esc(shortMail(c.author||''))}</div>
+    <textarea class="own" placeholder="Comentario…">${esc(c.text)}</textarea>
+    <div class="r"><button class="aiBtn">✨ IA</button><button class="resolveBtn">${c.resolved?'↩ Reabrir':'✓ Resolver'}</button><button class="del">🗑</button></div>
+    <div class="aiWrap"></div>
+    <div class="repwrap">${reps}</div>
+    <div class="repadd"><input class="repinput" placeholder="Responder…"><button class="repbtn sm">Responder</button></div>`;
+  const own=d.querySelector('.own'); own.oninput=()=>{c.text=own.value; scheduleSave();};
+  const aiBtn=d.querySelector('.aiBtn');
+  aiBtn.onclick=async()=>{ if(!c.text.trim()){alert('Escribe o dicta primero.');return;} aiBtn.disabled=true; aiBtn.innerHTML='<span class="spin"></span>';
+    try{ c.aiText=await aiCall({mode:'optimize',text:c.text,quote:c.quote}); c.useAi=true; }catch(e){ alert('No se pudo usar la IA: '+e.message); }
+    renderList(); scheduleSave(); };
+  d.querySelector('.resolveBtn').onclick=()=>{ c.resolved=!c.resolved; renderList(); drawAllHighlights(); scheduleSave(); };
+  d.querySelector('.del').onclick=()=>{ comments=comments.filter(x=>x.id!==c.id); if(activeId===c.id)activeId=null; renderList(); drawAllHighlights(); scheduleSave(); };
+  d.querySelectorAll('.repdel').forEach(x=>x.onclick=(e)=>{ e.stopPropagation(); c.replies.splice(+x.dataset.ri,1); renderList(); scheduleSave(); });
+  const addRep=()=>{ const inp=d.querySelector('.repinput'); const t=inp.value.trim(); if(!t)return; c.replies=(c.replies||[]).concat([{author:user.email,text:t}]); renderList(); scheduleSave(); };
+  d.querySelector('.repbtn').onclick=addRep;
+  d.querySelector('.repinput').onkeydown=(e)=>{ if(e.key==='Enter'){e.preventDefault();addRep();} };
+  if(c.aiText){ const w=d.querySelector('.aiWrap');
+    w.innerHTML=`<div class="ai"><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-bottom:3px">✨ Versión IA (editable)</div>
+      <textarea class="aiT">${esc(c.aiText)}</textarea>
+      <div class="pick"><label><input type="radio" name="p${c.id}" class="pO" ${!c.useAi?'checked':''}> La mía</label>
+      <label><input type="radio" name="p${c.id}" class="pA" ${c.useAi?'checked':''}> La de IA</label></div></div>`;
+    w.querySelector('.aiT').oninput=e=>{c.aiText=e.target.value; scheduleSave();};
+    w.querySelector('.pO').onchange=()=>{c.useAi=false; scheduleSave();}; w.querySelector('.pA').onchange=()=>{c.useAi=true; scheduleSave();};
+  }
+  return d;
 }
 
 /* ---- GUARDADO AUTOMÁTICO ---- */
@@ -924,7 +963,7 @@ async function saveNow(){
   if(saving){ clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,700); return; }
   clearTimeout(saveTimer); saving=true; setSaveState('💾 Guardando…');
   const sid=cur.submission.id;
-  const rows=comments.map((c,i)=>({submission_id:sid,page:c.page,rects:c.rects,quote:c.quote,body:c.text,ai_text:c.aiText,use_ai:c.useAi,position:i}));
+  const rows=comments.map((c,i)=>({submission_id:sid,page:c.page,rects:c.rects,quote:c.quote,body:c.text,ai_text:c.aiText,use_ai:c.useAi,position:i,author:c.author||user.email,resolved:!!c.resolved,replies:c.replies||[]}));
   let err=(await sb.from('comments').delete().eq('submission_id',sid)).error;
   if(!err && rows.length) err=(await sb.from('comments').insert(rows)).error;
   if(!err){ const st=comments.length?'corregido':'pendiente'; await sb.from('submissions').update({status:st}).eq('id',sid); if(cur.submission)cur.submission.status=st; }
