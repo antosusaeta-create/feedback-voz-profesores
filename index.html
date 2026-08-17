@@ -313,7 +313,7 @@ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudf
 const $=s=>document.querySelector(s);
 let user=null;
 let cur={course:null,evaluation:null,submission:null};
-let courses=[], categories=[], sharedEvals=[], invitations=[], evalCache={}, expanded={}, drag=null;
+let courses=[], categories=[], sharedEvals=[], invitations=[], notifs=[], evalCache={}, expanded={}, drag=null;
 function isDone(v){ return v==='corregido' || (v&&typeof v==='object'&&v.done); }
 function shortMail(e){ return (e||'').split('@')[0]; }
 function trafficColor(p){ return p<20?'#dc2626':p<50?'#f97316':p<80?'#f59e0b':'#059669'; }
@@ -337,8 +337,8 @@ sb.auth.onAuthStateChange((_e,session)=>{ const u=session?.user||null;
 /* ---------------- ARRANQUE ---------------- */
 async function boot(){
   const [cats,cos]=await Promise.all([ sb.from('categories').select('*').order('position').order('created_at'), sb.from('courses').select('*').order('position').order('created_at') ]);
-  categories=cats.data||[]; courses=cos.data||[]; sharedEvals=await loadSharedEvals(); await loadInvitations(); applySb(); renderSidebar(); renderBell(); showWelcome();
-  if(!window._notifPoll){ window._notifPoll=setInterval(async()=>{ try{ await loadInvitations(); renderBell(); }catch(e){} }, 60000); }
+  categories=cats.data||[]; courses=cos.data||[]; sharedEvals=await loadSharedEvals(); await loadInvitations(); await loadNotifs(); applySb(); renderSidebar(); renderBell(); showWelcome();
+  if(!window._notifPoll){ window._notifPoll=setInterval(async()=>{ try{ await loadInvitations(); await loadNotifs(); renderBell(); }catch(e){} }, 60000); }
 }
 async function loadSharedEvals(){
   const {data}=await sb.from('collaborators').select('evaluation_id,owner');
@@ -348,12 +348,18 @@ async function loadSharedEvals(){
   return evs||[];
 }
 async function loadInvitations(){ const {data}=await sb.from('collaborators').select('id,evaluation_id,status,owner,eval_name,inviter_email'); invitations=(data||[]).filter(r=>r.owner!==user.id); }
-function renderBell(){ const pend=invitations.filter(i=>i.status==='pending'); const b=$('#bellBadge');
-  if(pend.length){ b.textContent=pend.length; b.style.display='inline-block'; } else b.style.display='none'; }
+async function loadNotifs(){ const {data}=await sb.from('notifications').select('*').order('created_at',{ascending:false}); notifs=(data||[]).filter(n=>n.owner!==user.id && !n.seen); }
+async function notifyAssign(email, ev){ if(!email || !ev || email===user.email) return; try{ await sb.from('notifications').insert({user_email:email,eval_id:ev.id,eval_name:ev.name,body:'Te asignaron para corregir'}); }catch(e){} }
+async function markNotifSeen(id){ await sb.from('notifications').update({seen:true}).eq('id',id); notifs=notifs.filter(n=>n.id!==id); renderBell(); }
+async function openEvalById(eid){ let ev=sharedEvals.find(e=>e.id===eid); if(!ev){ const {data}=await sb.from('evaluations').select('*').eq('id',eid).single(); ev=data; } if(ev) selectEvaluation(ev); }
+function renderBell(){ const n=invitations.filter(i=>i.status==='pending').length + notifs.length; const b=$('#bellBadge');
+  if(n){ b.textContent=n; b.style.display='inline-block'; } else b.style.display='none'; }
 function renderNotif(){ const p=$('#notifPanel');
   const pend=invitations.filter(i=>i.status==='pending'); const acc=invitations.filter(i=>i.status==='accepted');
-  if(!pend.length && !acc.length){ p.innerHTML='<div style="padding:14px;color:var(--muted);font-size:13px">No tienes invitaciones.</div>'; return; }
+  if(!pend.length && !acc.length && !notifs.length){ p.innerHTML='<div style="padding:14px;color:var(--muted);font-size:13px">No tienes avisos.</div>'; return; }
   let h='';
+  if(notifs.length){ h+='<div style="padding:9px 12px;font-weight:600;font-size:12px;color:var(--muted)">Avisos</div>';
+    notifs.forEach(n=>{ h+=`<div class="notifItem" data-id="${n.id}" data-eid="${n.eval_id}" style="padding:10px 12px;border-top:1px solid var(--line);font-size:13px;cursor:pointer">📌 <b>${esc(n.eval_name||'')}</b><br><span style="color:var(--muted)">${esc(n.body||'')}</span></div>`; }); }
   if(pend.length){ h+='<div style="padding:9px 12px;font-weight:600;font-size:12px;color:var(--muted)">Invitaciones</div>';
     pend.forEach(i=>{ h+=`<div style="padding:10px 12px;border-top:1px solid var(--line);font-size:13px"><div>${i.inviter_email?esc(shortMail(i.inviter_email))+' te invitó a ':'Te invitaron a '}<b>${esc(i.eval_name||'una evaluación')}</b></div><div style="display:flex;gap:6px;margin-top:7px"><button class="sm primary acc" data-id="${i.id}">Aceptar</button><button class="sm rej" data-id="${i.id}">Rechazar</button></div></div>`; }); }
   if(acc.length){ h+='<div style="padding:9px 12px;font-weight:600;font-size:12px;color:var(--muted);border-top:1px solid var(--line)">Compartidas contigo</div>';
@@ -361,7 +367,8 @@ function renderNotif(){ const p=$('#notifPanel');
   p.innerHTML=h;
   p.querySelectorAll('.acc').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); acceptInvite(b.dataset.id); });
   p.querySelectorAll('.rej').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); rejectInvite(b.dataset.id); });
-  p.querySelectorAll('.accItem').forEach(el=>el.onclick=()=>{ const ev=sharedEvals.find(e=>e.id===el.dataset.eid); $('#notifPanel').style.display='none'; if(ev) selectEvaluation(ev); }); }
+  p.querySelectorAll('.accItem').forEach(el=>el.onclick=()=>{ const ev=sharedEvals.find(e=>e.id===el.dataset.eid); $('#notifPanel').style.display='none'; if(ev) selectEvaluation(ev); });
+  p.querySelectorAll('.notifItem').forEach(el=>el.onclick=async()=>{ await markNotifSeen(el.dataset.id); $('#notifPanel').style.display='none'; await openEvalById(el.dataset.eid); }); }
 async function acceptInvite(id){ await sb.from('collaborators').update({status:'accepted'}).eq('id',id); await loadInvitations(); sharedEvals=await loadSharedEvals(); renderSidebar(); renderBell(); renderNotif(); }
 async function rejectInvite(id){ await sb.from('collaborators').update({status:'rejected'}).eq('id',id); await loadInvitations(); renderBell(); renderNotif(); }
 $('#bell').onclick=(e)=>{ e.stopPropagation(); const p=$('#notifPanel'); const show=(p.style.display==='none'||!p.style.display); if(show){ renderNotif(); p.style.display='block'; } else p.style.display='none'; };
@@ -393,7 +400,7 @@ function renderSidebar(){
   bCurso.ondragleave=()=>bCurso.classList.remove('dropinto');
   bCurso.ondrop=()=>{ bCurso.classList.remove('dropinto'); if(drag&&drag.type==='course') moveCourse(drag.id,null,null); };
   el.appendChild(bCurso);
-  courses.filter(c=>!c.category_id && c.name!=='⚡ Documentos rápidos').forEach(co=>renderCourseNode(el,co));
+  courses.filter(c=>!c.category_id).forEach(co=>renderCourseNode(el,co));
   categories.forEach(cat=>{
     const key='cat_'+cat.id; if(expanded[key]===undefined) expanded[key]=true;
     const head=mk('div','sb-cat','');
@@ -546,7 +553,8 @@ function editSections(ev){
   const v=$('#mainPanel');
   v.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
       <h2 class="title" style="margin:0">⚙️ Secciones · ${esc(ev.name)}</h2>
-      <button id="toSubs2" class="sm">← Volver</button></div>
+      <button id="toSubs2" class="sm">← Volver y guardar</button></div>
+    <p class="hint" style="margin-top:-6px">Los cambios se guardan solos a medida que los haces.</p>
     <p class="hint">Divide la evaluación en partes (ej: Pregunta 1, 2, 3… o Introducción, Conclusión). Si la dejas vacía, la evaluación es simple: sin tabla, solo corregido / pendiente.</p>
     <div id="secChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;max-width:440px"><input id="secInput" placeholder="Agregar sección (ej: Pregunta 1)…"><button id="addSec" class="sm">Agregar</button></div>
@@ -609,9 +617,9 @@ async function refreshBoard(ev){
     <div style="overflow-x:auto"><table class="board"><thead><tr><th>Estado</th><th style="text-align:left">Alumno</th>${heads}${scoreHeads}<th>Responsable</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="hint" style="margin-top:8px">Reparte por <b>sección</b> (encabezado) o por <b>alumno</b> (Responsable). Puntajes: pon el máximo en ⚙️ Secciones.</p>`;
   box.querySelectorAll('.asignCol').forEach(sel=>{ sel.onchange=async()=>{ const na={...assign}; if(sel.value) na[sel.dataset.sec]=sel.value; else delete na[sel.dataset.sec];
-    ev.section_assignments=na; await sb.from('evaluations').update({section_assignments:na}).eq('id',ev.id); refreshBoard(ev); }; });
+    ev.section_assignments=na; await sb.from('evaluations').update({section_assignments:na}).eq('id',ev.id); notifyAssign(sel.value,ev); refreshBoard(ev); }; });
   box.querySelectorAll('.asgRow').forEach(sel=>{ sel.onchange=async()=>{ const sObj=data.find(x=>x.id===sel.dataset.sub); sObj.assignee=sel.value||null;
-    await sb.from('submissions').update({assignee:sObj.assignee}).eq('id',sObj.id); refreshBoard(ev); }; });
+    await sb.from('submissions').update({assignee:sObj.assignee}).eq('id',sObj.id); notifyAssign(sObj.assignee,ev); refreshBoard(ev); }; });
   box.querySelectorAll('.dotc').forEach(d=>{ d.onclick=async()=>{ const sObj=data.find(x=>x.id===d.dataset.sub); const prog=sObj.section_progress||{}; const sec=d.dataset.sec;
     if(isDone(prog[sec])) delete prog[sec]; else prog[sec]={done:true,by:user.email}; sObj.section_progress=prog;
     await sb.from('submissions').update({section_progress:prog}).eq('id',sObj.id); refreshBoard(ev); }; });
@@ -671,7 +679,7 @@ async function refreshSubs(ev){
         <button class="sm open">Corregir</button><button class="sm rep" title="Ver reporte">📄</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button></span>`;
     el.querySelector('.rep').onclick=()=>openReport(s);
     el.querySelector('.lightbtn').onclick=async()=>{ const order=['pendiente','en_progreso','corregido']; const nx=order[(order.indexOf(s.status)+1)%3]; s.status=nx; await sb.from('submissions').update({status:nx}).eq('id',s.id); refreshSubs(ev); };
-    el.querySelector('.asg').onchange=async(e)=>{ s.assignee=e.target.value||null; await sb.from('submissions').update({assignee:s.assignee}).eq('id',s.id); };
+    el.querySelector('.asg').onchange=async(e)=>{ s.assignee=e.target.value||null; await sb.from('submissions').update({assignee:s.assignee}).eq('id',s.id); notifyAssign(s.assignee,ev); };
     el.querySelector('.open').onclick=()=>openSubmission(s);
     el.querySelector('.nm').onclick=()=>openSubmission(s);
     el.querySelector('.rename').onclick=async()=>{ const n=prompt('Nombre del alumno:',s.student_name||''); if(n===null)return; await sb.from('submissions').update({student_name:n}).eq('id',s.id); refreshSubs(ev); };
@@ -754,18 +762,22 @@ function metCard(label,val){ return `<div style="background:var(--bg);border-rad
 
 /* ---------------- DOCUMENTO RÁPIDO ---------------- */
 async function quickDoc(){
-  let co=courses.find(c=>c.name==='⚡ Documentos rápidos');
-  if(!co){ const {data}=await sb.from('courses').insert({name:'⚡ Documentos rápidos'}).select().single(); co=data; courses.push(co); }
-  let evs=await loadEvals(co); let ev=evs.find(e=>e.name==='Sueltos');
-  if(!ev){ const {data}=await sb.from('evaluations').insert({name:'Sueltos',type:'ensayo',course_id:co.id}).select().single(); ev=data; evs.push(ev); }
-  quickTargetEv=ev; $('#quickFile').click();
+  try{
+    let co=courses.find(c=>c.name==='⚡ Documentos rápidos');
+    if(!co){ const {data,error}=await sb.from('courses').insert({name:'⚡ Documentos rápidos'}).select().single(); if(error)throw error; co=data; courses.push(co); }
+    let evs=await loadEvals(co); let ev=evs.find(e=>e.name==='Sueltos');
+    if(!ev){ const {data,error}=await sb.from('evaluations').insert({name:'Sueltos',type:'ensayo',course_id:co.id}).select().single(); if(error)throw error; ev=data; evs.push(ev); }
+    quickTargetEv=ev; renderSidebar(); $('#quickFile').click();
+  }catch(e){ alert('No se pudo preparar Documento rápido: '+(e.message||e)); }
 }
 let quickTargetEv=null;
 $('#quickFile').onchange=async()=>{ const f=$('#quickFile').files[0]; if(!f||!quickTargetEv)return;
+  if(!f.name.toLowerCase().endsWith('.pdf')){ alert('Por ahora Documento rápido solo acepta PDF.'); $('#quickFile').value=''; return; }
   const ev=quickTargetEv; const path=`${user.id}/${crypto.randomUUID()}-${f.name}`;
-  const up=await sb.storage.from('documentos').upload(path,f); if(up.error){alert(up.error.message);return;}
-  const {data}=await sb.from('submissions').insert({evaluation_id:ev.id,student_name:f.name.replace(/\.pdf$/i,''),file_path:path}).select().single();
-  $('#quickFile').value=''; openSubmission(data); };
+  const up=await sb.storage.from('documentos').upload(path,f); if(up.error){ alert('Error al subir: '+up.error.message); return; }
+  const {data,error}=await sb.from('submissions').insert({evaluation_id:ev.id,student_name:f.name.replace(/\.pdf$/i,''),file_path:path}).select().single();
+  if(error){ alert('Error al crear la entrega: '+error.message); return; }
+  $('#quickFile').value=''; cur.course=courses.find(c=>c.id===ev.course_id)||null; cur.evaluation=ev; openSubmission(data); };
 
 /* ================= CORRECTOR ================= */
 let pdfDoc=null, scale=1.0, comments=[], activeId=null, pageState={}, io=null;
@@ -901,6 +913,18 @@ function recUI(on){ $('#rec').textContent=on?'⏹ Detener':'🎤 Comentar selecc
 const getC=id=>comments.find(c=>c.id===id);
 function focusC(id){ activeId=id; renderList(); drawAllHighlights();
   const el=document.querySelector('.cmt[data-id="'+id+'"]'); if(el)el.scrollIntoView({behavior:'smooth',block:'center'}); }
+let dictRec=null, dictOn=false;
+function dictateInto(inp, btn){
+  if(dictOn){ if(dictRec){try{dictRec.stop();}catch(e){}} dictOn=false; if(btn)btn.textContent='🎤'; return; }
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ alert('Usa Chrome o Edge para dictar.'); return; }
+  dictRec=new SR(); dictRec.lang='es-CL'; dictRec.interimResults=true; dictRec.continuous=true;
+  let base=inp.value;
+  dictRec.onresult=ev=>{ let it=''; for(let i=ev.resultIndex;i<ev.results.length;i++){ const t=ev.results[i][0].transcript; if(ev.results[i].isFinal) base+=(base?' ':'')+t.trim(); else it+=t; } inp.value=(base+' '+it).trim(); };
+  dictRec.onend=()=>{ dictOn=false; if(btn)btn.textContent='🎤'; };
+  dictRec.onerror=()=>{ dictOn=false; if(btn)btn.textContent='🎤'; };
+  try{ dictRec.start(); dictOn=true; if(btn)btn.textContent='⏹'; }catch(e){}
+}
 let commentFilter='todos';
 function renderList(){
   const box=$('#list'); const FILT={todos:'Todos',activos:'Activos',resueltos:'Resueltos',respondidos:'Respondidos',sinresp:'Sin responder'};
@@ -931,7 +955,7 @@ function renderCommentCard(c){
     <div class="r"><button class="aiBtn">✨ IA</button><button class="resolveBtn">${c.resolved?'↩ Reabrir':'✓ Resolver'}</button><button class="del">🗑</button></div>
     <div class="aiWrap"></div>
     <div class="repwrap">${reps}</div>
-    <div class="repadd"><input class="repinput" placeholder="Responder…"><button class="repbtn sm">Responder</button></div>`;
+    <div class="repadd"><input class="repinput" placeholder="Responder…"><button class="repmic sm" title="Dictar respuesta">🎤</button><button class="repia sm" title="Mejorar con IA">✨</button><button class="repbtn sm">Responder</button></div>`;
   const own=d.querySelector('.own'); own.oninput=()=>{c.text=own.value; scheduleSave();};
   const aiBtn=d.querySelector('.aiBtn');
   aiBtn.onclick=async()=>{ if(!c.text.trim()){alert('Escribe o dicta primero.');return;} aiBtn.disabled=true; aiBtn.innerHTML='<span class="spin"></span>';
@@ -940,9 +964,13 @@ function renderCommentCard(c){
   d.querySelector('.resolveBtn').onclick=()=>{ c.resolved=!c.resolved; renderList(); drawAllHighlights(); scheduleSave(); };
   d.querySelector('.del').onclick=()=>{ comments=comments.filter(x=>x.id!==c.id); if(activeId===c.id)activeId=null; renderList(); drawAllHighlights(); scheduleSave(); };
   d.querySelectorAll('.repdel').forEach(x=>x.onclick=(e)=>{ e.stopPropagation(); c.replies.splice(+x.dataset.ri,1); renderList(); scheduleSave(); });
-  const addRep=()=>{ const inp=d.querySelector('.repinput'); const t=inp.value.trim(); if(!t)return; c.replies=(c.replies||[]).concat([{author:user.email,text:t}]); renderList(); scheduleSave(); };
+  const rinp=d.querySelector('.repinput');
+  const addRep=()=>{ const t=rinp.value.trim(); if(!t)return; c.replies=(c.replies||[]).concat([{author:user.email,text:t}]); renderList(); scheduleSave(); };
   d.querySelector('.repbtn').onclick=addRep;
-  d.querySelector('.repinput').onkeydown=(e)=>{ if(e.key==='Enter'){e.preventDefault();addRep();} };
+  rinp.onkeydown=(e)=>{ if(e.key==='Enter'){e.preventDefault();addRep();} };
+  d.querySelector('.repmic').onclick=(e)=>dictateInto(rinp,e.currentTarget);
+  d.querySelector('.repia').onclick=async(e)=>{ const t=rinp.value.trim(); if(!t)return; const b=e.currentTarget; b.disabled=true; b.innerHTML='<span class="spin"></span>';
+    try{ rinp.value=await aiCall({mode:'optimize',text:t,quote:c.quote}); }catch(err){ alert('IA no disponible: '+err.message); } b.disabled=false; b.textContent='✨'; };
   if(c.aiText){ const w=d.querySelector('.aiWrap');
     w.innerHTML=`<div class="ai"><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-bottom:3px">✨ Versión IA (editable)</div>
       <textarea class="aiT">${esc(c.aiText)}</textarea>
@@ -974,10 +1002,10 @@ $('#saveBtn').onclick=()=>saveNow();
 /* consolidar + exportar */
 const finalText=c=>(c.useAi&&c.aiText)?c.aiText:c.text;
 $('#consBtn').onclick=async()=>{
-  const list=comments.filter(c=>finalText(c).trim());
+  const list=comments.filter(c=>!c.resolved && finalText(c).trim());
   const btn=$('#consBtn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   let summary='',note='';
-  if(list.length){ try{ summary=await aiCall({mode:'consolidate',doc:cur.submission.student_name||'',comments:list.map(c=>({quote:c.quote,text:finalText(c)}))}); }
+  if(list.length){ try{ summary=await aiCall({mode:'consolidate',doc:cur.submission.student_name||'',comments:list.map(c=>({quote:c.quote,text:finalText(c)+((c.replies||[]).length?' [respuestas: '+c.replies.map(r=>r.text).join(' | ')+']':'')}))}); }
     catch(e){ summary=`Se realizaron ${list.length} observaciones sobre tu trabajo. Revisa cada comentario junto a la parte del texto correspondiente.`; note='🤖 IA no disponible. Resumen básico; editable.'; } }
   cur.submission.summary=summary; if(summary) await sb.from('submissions').update({summary}).eq('id',cur.submission.id);
   btn.disabled=false; btn.textContent='✨ Consolidar';
@@ -986,7 +1014,7 @@ $('#consBtn').onclick=async()=>{
 async function openReport(sub){
   cur.submission=sub;
   const {data}=await sb.from('comments').select('*').eq('submission_id',sub.id).order('position');
-  const list=(data||[]).map(c=>({quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai})).filter(c=>finalText(c).trim());
+  const list=(data||[]).map(c=>({quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai,resolved:!!c.resolved,replies:c.replies||[]})).filter(c=>!c.resolved && finalText(c).trim());
   buildReport(sub, cur.evaluation, list, sub.summary||('Se realizaron '+list.length+' observación(es) sobre el trabajo.'), '');
 }
 function buildReport(sub, ev, list, summary, note){
@@ -995,8 +1023,10 @@ function buildReport(sub, ev, list, summary, note){
   const nota=mx?computeGrade(tot,mx,ev.exigencia):null; const temas=(ev&&ev.custom_themes)||[];
   let html=note?`<div class="banner">${note}</div>`:'';
   html+=`<div id="blkSummary"><h4>Resumen de la corrección</h4><p class="rc">${esc(summary||'')}</p></div>`;
-  html+='<div id="blkComments"><h4>Comentarios</h4>'+(list.length?'':'<p class="rc" style="color:#999">Sin comentarios.</p>');
-  list.forEach((c,i)=>html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`);
+  const shown=list.filter(c=>!c.resolved);
+  html+='<div id="blkComments"><h4>Comentarios</h4>'+(shown.length?'':'<p class="rc" style="color:#999">Sin comentarios.</p>');
+  shown.forEach((c,i)=>{ html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`;
+    (c.replies||[]).forEach(r=>html+=`<p class="rc" style="margin:2px 0 9px 18px;color:#555">↳ <b>${esc(shortMail(r.author||''))}:</b> ${esc(r.text)}</p>`); });
   html+='</div>';
   if(secsMax.length){
     html+=`<div id="blkPunt" style="display:none"><h4>Puntajes</h4><table class="board" style="font-size:13px"><thead><tr><th style="text-align:left">Sección</th><th>Puntaje</th><th>Máximo</th></tr></thead><tbody>${secsMax.map(s=>`<tr><td class="nm">${esc(s)}</td><td>${sc[s]??'—'}</td><td>${maxMap[s]}</td></tr>`).join('')}<tr><td class="nm"><b>Total</b></td><td><b>${tot}</b></td><td><b>${mx}</b></td></tr></tbody></table></div>`;
