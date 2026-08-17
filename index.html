@@ -249,6 +249,19 @@
 
 <input type="file" id="quickFile" accept=".pdf" hidden>
 
+<dialog id="courseDlg">
+  <div class="dlg-head"><h3 id="courseDlgTitle" style="margin:0;font-size:15px">Configurar curso</h3><button id="courseDlgClose" class="sm" style="margin-left:auto">Cerrar</button></div>
+  <div class="dlg-body">
+    <p class="hint">Agrega profesores o ayudantes por correo. Quedan disponibles en TODAS las evaluaciones del curso para asignar, sin reinvitar. Cada uno debe aceptar la invitación (🔔) para acceder.</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <input id="ccEmail" type="email" placeholder="correo@ejemplo.com" style="flex:1;min-width:160px">
+      <select id="ccRole" style="width:auto"><option value="ayudante">Ayudante</option><option value="profesor">Profesor</option></select>
+      <button id="ccAdd" class="primary sm">Agregar</button>
+    </div>
+    <div id="ccList"></div>
+  </div>
+</dialog>
+
 <dialog id="colDlg">
   <div class="dlg-head"><h3 id="colTitle" style="margin:0;font-size:15px">Colaboradores</h3><button id="colClose" class="sm" style="margin-left:auto">Cerrar</button></div>
   <div class="dlg-body">
@@ -290,6 +303,7 @@
       <b style="width:100%;color:var(--muted);font-size:11px;letter-spacing:.3px">QUÉ INCLUIR EN EL REPORTE</b>
       <label><input type="checkbox" id="tgSummary" checked> Consolidado</label>
       <label><input type="checkbox" id="tgComments" checked> Comentarios</label>
+      <label><input type="checkbox" id="tgResolved"> Incluir resueltos</label>
       <label><input type="checkbox" id="tgPunt"> Puntajes</label>
       <label><input type="checkbox" id="tgNota"> Nota</label>
       <label><input type="checkbox" id="tgTemas"> Temas</label>
@@ -313,7 +327,7 @@ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudf
 const $=s=>document.querySelector(s);
 let user=null;
 let cur={course:null,evaluation:null,submission:null};
-let courses=[], categories=[], sharedEvals=[], invitations=[], notifs=[], evalCache={}, expanded={}, drag=null;
+let courses=[], categories=[], sharedEvals=[], sharedCourses=[], invitations=[], courseInvites=[], notifs=[], evalCache={}, expanded={}, drag=null;
 function isDone(v){ return v==='corregido' || (v&&typeof v==='object'&&v.done); }
 function shortMail(e){ return (e||'').split('@')[0]; }
 function trafficColor(p){ return p<20?'#dc2626':p<50?'#f97316':p<80?'#f59e0b':'#059669'; }
@@ -337,8 +351,8 @@ sb.auth.onAuthStateChange((_e,session)=>{ const u=session?.user||null;
 /* ---------------- ARRANQUE ---------------- */
 async function boot(){
   const [cats,cos]=await Promise.all([ sb.from('categories').select('*').order('position').order('created_at'), sb.from('courses').select('*').order('position').order('created_at') ]);
-  categories=cats.data||[]; courses=cos.data||[]; sharedEvals=await loadSharedEvals(); await loadInvitations(); await loadNotifs(); applySb(); renderSidebar(); renderBell(); showWelcome();
-  if(!window._notifPoll){ window._notifPoll=setInterval(async()=>{ try{ await loadInvitations(); await loadNotifs(); renderBell(); }catch(e){} }, 60000); }
+  categories=cats.data||[]; courses=cos.data||[]; sharedEvals=await loadSharedEvals(); sharedCourses=await loadSharedCourses(); await loadInvitations(); await loadCourseInvites(); await loadNotifs(); applySb(); renderSidebar(); renderBell(); showWelcome();
+  if(!window._notifPoll){ window._notifPoll=setInterval(async()=>{ try{ await loadInvitations(); await loadCourseInvites(); await loadNotifs(); renderBell(); }catch(e){} }, 60000); }
 }
 async function loadSharedEvals(){
   const {data}=await sb.from('collaborators').select('evaluation_id,owner');
@@ -352,21 +366,58 @@ async function loadNotifs(){ const {data}=await sb.from('notifications').select(
 async function notifyAssign(email, ev){ if(!email || !ev || email===user.email) return; try{ await sb.from('notifications').insert({user_email:email,eval_id:ev.id,eval_name:ev.name,body:'Te asignaron para corregir'}); }catch(e){} }
 async function markNotifSeen(id){ await sb.from('notifications').update({seen:true}).eq('id',id); notifs=notifs.filter(n=>n.id!==id); renderBell(); }
 async function openEvalById(eid){ let ev=sharedEvals.find(e=>e.id===eid); if(!ev){ const {data}=await sb.from('evaluations').select('*').eq('id',eid).single(); ev=data; } if(ev) selectEvaluation(ev); }
-function renderBell(){ const n=invitations.filter(i=>i.status==='pending').length + notifs.length; const b=$('#bellBadge');
+async function loadSharedCourses(){ const {data}=await sb.from('course_collaborators').select('course_id,owner,status');
+  const ids=[...new Set((data||[]).filter(r=>r.owner!==user.id && r.status==='accepted').map(r=>r.course_id))];
+  if(!ids.length) return []; const {data:cs}=await sb.from('courses').select('*').in('id',ids); return cs||[]; }
+async function loadCourseInvites(){ const {data}=await sb.from('course_collaborators').select('id,course_id,status,owner,course_name,inviter_email,role'); courseInvites=(data||[]).filter(r=>r.owner!==user.id); }
+async function acceptCourseInvite(id){ await sb.from('course_collaborators').update({status:'accepted'}).eq('id',id); await loadCourseInvites(); sharedCourses=await loadSharedCourses(); renderSidebar(); renderBell(); renderNotif(); }
+async function rejectCourseInvite(id){ await sb.from('course_collaborators').update({status:'rejected'}).eq('id',id); await loadCourseInvites(); renderBell(); renderNotif(); }
+async function openCourseConfig(co){
+  $('#courseDlgTitle').textContent='Configurar · '+co.name; await renderCourseCollab(co); $('#courseDlg').showModal();
+  $('#ccAdd').onclick=async()=>{ const em=$('#ccEmail').value.trim().toLowerCase(); if(!em)return; const role=$('#ccRole').value;
+    const {error}=await sb.from('course_collaborators').insert({course_id:co.id,user_email:em,role,status:'pending',course_name:co.name,inviter_email:user.email});
+    if(error){ alert(error.message); return; }
+    try{ await sb.from('notifications').insert({user_email:em,eval_name:co.name,body:'Te invitaron a colaborar en el curso'}); }catch(e){}
+    $('#ccEmail').value=''; renderCourseCollab(co);
+    alert('✅ Invitado. Le llegará una notificación 🔔 que debe aceptar para acceder al curso.'); };
+}
+$('#courseDlgClose').onclick=()=>$('#courseDlg').close();
+async function renderCourseCollab(co){ const {data}=await sb.from('course_collaborators').select('*').eq('course_id',co.id).order('created_at');
+  const box=$('#ccList'); box.innerHTML=(data||[]).length?'':'<p class="hint">Nadie agregado aún.</p>';
+  (data||[]).forEach(c=>{ const row=mk('div','row-item','');
+    row.innerHTML=`<span>${c.role==='profesor'?'🎓':'🧑‍🏫'} ${esc(c.user_email)} ${c.status!=='accepted'?'<span style="font-size:10px;color:var(--muted)">('+esc(c.status)+')</span>':''}</span>
+      <select class="ccrole" style="width:auto;font-size:12px;margin-left:auto"><option value="ayudante" ${c.role==='ayudante'?'selected':''}>Ayudante</option><option value="profesor" ${c.role==='profesor'?'selected':''}>Profesor</option></select>
+      <button class="sm ccdel">Quitar</button>`;
+    row.querySelector('.ccrole').onchange=async(e)=>{ await sb.from('course_collaborators').update({role:e.target.value}).eq('id',c.id); };
+    row.querySelector('.ccdel').onclick=async()=>{ await sb.from('course_collaborators').delete().eq('id',c.id); renderCourseCollab(co); };
+    box.appendChild(row); }); }
+function renderSharedCourseNode(el,co){
+  const row=mk('div','sb-course'+(cur.course&&cur.course.id===co.id?' sel':''),'');
+  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span class="nm">${esc(co.name)}</span>`;
+  row.querySelector('.chev').onclick=(e)=>{e.stopPropagation();toggleCourse(co);};
+  row.querySelector('.nm').onclick=()=>selectCourse(co);
+  el.appendChild(row);
+  if(expanded[co.id]) (evalCache[co.id]||[]).forEach(ev=>{ const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
+    er.innerHTML=`📝 <span class="nm">${esc(ev.name)}</span>`; er.querySelector('.nm').onclick=()=>selectEvaluation(ev); el.appendChild(er); }); }
+function renderBell(){ const n=invitations.filter(i=>i.status==='pending').length + courseInvites.filter(i=>i.status==='pending').length + notifs.length; const b=$('#bellBadge');
   if(n){ b.textContent=n; b.style.display='inline-block'; } else b.style.display='none'; }
 function renderNotif(){ const p=$('#notifPanel');
-  const pend=invitations.filter(i=>i.status==='pending'); const acc=invitations.filter(i=>i.status==='accepted');
-  if(!pend.length && !acc.length && !notifs.length){ p.innerHTML='<div style="padding:14px;color:var(--muted);font-size:13px">No tienes avisos.</div>'; return; }
+  const pend=invitations.filter(i=>i.status==='pending'); const acc=invitations.filter(i=>i.status==='accepted'); const cpend=courseInvites.filter(i=>i.status==='pending');
+  if(!pend.length && !acc.length && !notifs.length && !cpend.length){ p.innerHTML='<div style="padding:14px;color:var(--muted);font-size:13px">No tienes avisos.</div>'; return; }
   let h='';
   if(notifs.length){ h+='<div style="padding:9px 12px;font-weight:600;font-size:12px;color:var(--muted)">Avisos</div>';
     notifs.forEach(n=>{ h+=`<div class="notifItem" data-id="${n.id}" data-eid="${n.eval_id}" style="padding:10px 12px;border-top:1px solid var(--line);font-size:13px;cursor:pointer">📌 <b>${esc(n.eval_name||'')}</b><br><span style="color:var(--muted)">${esc(n.body||'')}</span></div>`; }); }
   if(pend.length){ h+='<div style="padding:9px 12px;font-weight:600;font-size:12px;color:var(--muted)">Invitaciones</div>';
     pend.forEach(i=>{ h+=`<div style="padding:10px 12px;border-top:1px solid var(--line);font-size:13px"><div>${i.inviter_email?esc(shortMail(i.inviter_email))+' te invitó a ':'Te invitaron a '}<b>${esc(i.eval_name||'una evaluación')}</b></div><div style="display:flex;gap:6px;margin-top:7px"><button class="sm primary acc" data-id="${i.id}">Aceptar</button><button class="sm rej" data-id="${i.id}">Rechazar</button></div></div>`; }); }
+  if(cpend.length){ h+='<div style="padding:9px 12px;font-weight:600;font-size:12px;color:var(--muted);border-top:1px solid var(--line)">Invitaciones a cursos</div>';
+    cpend.forEach(i=>{ h+=`<div style="padding:10px 12px;border-top:1px solid var(--line);font-size:13px"><div>${i.inviter_email?esc(shortMail(i.inviter_email))+' te invitó como '+esc(i.role||'colaborador')+' a ':'Te invitaron a '}<b>${esc(i.course_name||'un curso')}</b></div><div style="display:flex;gap:6px;margin-top:7px"><button class="sm primary cacc" data-id="${i.id}">Aceptar</button><button class="sm crej" data-id="${i.id}">Rechazar</button></div></div>`; }); }
   if(acc.length){ h+='<div style="padding:9px 12px;font-weight:600;font-size:12px;color:var(--muted);border-top:1px solid var(--line)">Compartidas contigo</div>';
     acc.forEach(i=>{ h+=`<div class="accItem" data-eid="${i.evaluation_id}" style="padding:10px 12px;border-top:1px solid var(--line);font-size:13px;cursor:pointer">🤝 ${esc(i.eval_name||'evaluación')}</div>`; }); }
   p.innerHTML=h;
   p.querySelectorAll('.acc').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); acceptInvite(b.dataset.id); });
   p.querySelectorAll('.rej').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); rejectInvite(b.dataset.id); });
+  p.querySelectorAll('.cacc').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); acceptCourseInvite(b.dataset.id); });
+  p.querySelectorAll('.crej').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); rejectCourseInvite(b.dataset.id); });
   p.querySelectorAll('.accItem').forEach(el=>el.onclick=()=>{ const ev=sharedEvals.find(e=>e.id===el.dataset.eid); $('#notifPanel').style.display='none'; if(ev) selectEvaluation(ev); });
   p.querySelectorAll('.notifItem').forEach(el=>el.onclick=async()=>{ await markNotifSeen(el.dataset.id); $('#notifPanel').style.display='none'; await openEvalById(el.dataset.eid); }); }
 async function acceptInvite(id){ await sb.from('collaborators').update({status:'accepted'}).eq('id',id); await loadInvitations(); sharedEvals=await loadSharedEvals(); renderSidebar(); renderBell(); renderNotif(); }
@@ -416,13 +467,14 @@ function renderSidebar(){
     if(expanded[key]){ courses.filter(c=>c.category_id===cat.id).forEach(co=>renderCourseNode(el,co));
       el.appendChild(mk('div','sb-add-course','＋ curso',()=>newCourse(cat.id))); }
   });
-  if(sharedEvals.length){
+  if(sharedEvals.length || sharedCourses.length){
     const key='cat_shared'; if(expanded[key]===undefined) expanded[key]=true;
     const head=mk('div','sb-cat',''); head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">COMPARTIDAS CONMIGO</span>`;
     head.onclick=()=>{expanded[key]=!expanded[key];renderSidebar();};
     el.appendChild(head);
-    if(expanded[key]) sharedEvals.forEach(ev=>{ const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
-      er.innerHTML=`🤝 <span class="nm">${esc(ev.name)}</span>`; er.onclick=()=>selectEvaluation(ev); el.appendChild(er); });
+    if(expanded[key]){ sharedCourses.forEach(co=>renderSharedCourseNode(el,co));
+      sharedEvals.forEach(ev=>{ const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
+        er.innerHTML=`🤝 <span class="nm">${esc(ev.name)}</span>`; er.onclick=()=>selectEvaluation(ev); el.appendChild(er); }); }
   }
 }
 function renderCourseNode(el,co){
@@ -479,7 +531,7 @@ async function newCategory(){ const name=prompt('Nombre de la categoría (ej: Un
 
 /* ---------------- ACCIONES MENÚ ---------------- */
 async function newCourse(catId){ const name=prompt('Nombre del curso (ej: Historia 3°A):'); if(!name)return;
-  const {data,error}=await sb.from('courses').insert({name,category_id:catId||null}).select().single(); if(error){alert(error.message);return;} courses.push(data); renderSidebar(); selectCourse(data); }
+  const {data,error}=await sb.from('courses').insert({name,category_id:catId||null}).select().single(); if(error){alert(error.message);return;} courses.push(data); renderSidebar(); selectCourse(data); openCourseConfig(data); }
 async function newEvaluation(co){ const name=prompt('Nombre de la evaluación (ej: Control 5, Tesis, Ensayo):'); if(!name)return;
   const {data,error}=await sb.from('evaluations').insert({name,type:'ensayo',course_id:co.id}).select().single(); if(error){alert(error.message);return;}
   (evalCache[co.id]=evalCache[co.id]||[]).push(data); expanded[co.id]=true; renderSidebar(); selectEvaluation(data); }
@@ -495,8 +547,9 @@ function showWelcome(){ $('#mainPanel').innerHTML=`<div class="welcome"><div>�
 
 /* ---------------- MAIN: EVALUACIONES ---------------- */
 function renderEvaluationsMain(co){
-  const v=$('#mainPanel');
-  v.innerHTML=`<h2 class="title">${esc(co.name)}</h2><p class="hint">Evaluaciones de este curso.</p><div class="grid" id="g"></div>`;
+  const v=$('#mainPanel'); const isOwner=co.owner===user.id;
+  v.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px"><h2 class="title" style="margin:0">${esc(co.name)}</h2>${isOwner?'<button id="cfgBtn" class="sm">⚙️ Configurar curso</button>':'<span class="pill">compartido contigo</span>'}</div><p class="hint">Evaluaciones de este curso.</p><div class="grid" id="g"></div>`;
+  const cfg=$('#cfgBtn'); if(cfg) cfg.onclick=()=>openCourseConfig(co);
   const g=$('#g');
   (evalCache[co.id]||[]).forEach(ev=>{
     const el=mk('div','cardi','');
@@ -581,12 +634,13 @@ function renderScoresCfg(ev){ const box=$('#scoresCfg'); if(!box)return; const s
 async function saveSections(ev){ await sb.from('evaluations').update({sections:ev.sections||[]}).eq('id',ev.id); }
 async function refreshBoard(ev){
   const box=$('#subs'); if(!box)return; const secs=ev.sections||[];
-  const [subsRes,cbsRes]=await Promise.all([
+  const [subsRes,cbsRes,ccRes]=await Promise.all([
     sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at'),
-    sb.from('collaborators').select('user_email').eq('evaluation_id',ev.id)
+    sb.from('collaborators').select('user_email').eq('evaluation_id',ev.id),
+    ev.course_id? sb.from('course_collaborators').select('user_email').eq('course_id',ev.course_id) : Promise.resolve({data:[]})
   ]);
   const data=subsRes.data||[];
-  const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
+  const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).concat((ccRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
   const assign=ev.section_assignments||{};
   if(!data.length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
   const maxMap=ev.section_max||{}; const hasScores=secs.some(s=>maxMap[s]);
@@ -660,12 +714,13 @@ async function renderCollabList(ev){ const {data}=await sb.from('collaborators')
   (data||[]).forEach(c=>{ const row=mk('div','row-item',''); row.innerHTML=`<span>🤝 ${esc(c.user_email)}</span><button class="sm" style="margin-left:auto">Quitar</button>`;
     row.querySelector('button').onclick=async()=>{ await sb.from('collaborators').delete().eq('id',c.id); renderCollabList(ev); }; box.appendChild(row); }); }
 async function refreshSubs(ev){
-  const [subsRes,cbsRes]=await Promise.all([
+  const [subsRes,cbsRes,ccRes]=await Promise.all([
     sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at'),
-    sb.from('collaborators').select('user_email').eq('evaluation_id',ev.id)
+    sb.from('collaborators').select('user_email').eq('evaluation_id',ev.id),
+    ev.course_id? sb.from('course_collaborators').select('user_email').eq('course_id',ev.course_id) : Promise.resolve({data:[]})
   ]);
   const data=subsRes.data||[];
-  const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
+  const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).concat((ccRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
   const subs=$('#subs'); if(!subs)return; subs.innerHTML='';
   if(!data.length){ subs.innerHTML='<p class="hint">Aún no hay entregas. Sube el primer PDF arriba.</p>'; return; }
   data.forEach(s=>{
@@ -887,7 +942,7 @@ function drawHighlightsForPage(n){
   const layer=wrap.querySelector('.hlLayer'); if(!layer)return; layer.innerHTML='';
   const W=wrap.clientWidth,H=wrap.clientHeight;
   comments.filter(c=>c.page===n).forEach(c=>{ c.rects.forEach(r=>{
-    const b=mk('div','hlBox'+(c.id===activeId?' active':'')+(c.resolved?' res':''),''); b.style.left=r.x*W+'px'; b.style.top=r.y*H+'px'; b.style.width=r.w*W+'px'; b.style.height=r.h*H+'px';
+    const b=mk('div','hlBox'+(c.id===activeId?' active':'')+(c.resolved?' res':''),''); b.dataset.cid=c.id; b.style.left=r.x*W+'px'; b.style.top=r.y*H+'px'; b.style.width=r.w*W+'px'; b.style.height=r.h*H+'px';
     b.onclick=()=>focusC(c.id); layer.appendChild(b); }); });
 }
 function drawAllHighlights(){ Object.keys(pageState).forEach(n=>{ if(pageState[n].rendered||document.querySelector('.page[data-page="'+n+'"] .hlLayer')) drawHighlightsForPage(+n); }); }
@@ -1002,20 +1057,28 @@ $('#saveBtn').onclick=()=>saveNow();
 /* consolidar + exportar */
 const finalText=c=>(c.useAi&&c.aiText)?c.aiText:c.text;
 $('#consBtn').onclick=async()=>{
-  const list=comments.filter(c=>!c.resolved && finalText(c).trim());
+  const active=comments.filter(c=>!c.resolved && finalText(c).trim());
+  const all=comments.filter(c=>finalText(c).trim());
   const btn=$('#consBtn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   let summary='',note='';
-  if(list.length){ try{ summary=await aiCall({mode:'consolidate',doc:cur.submission.student_name||'',comments:list.map(c=>({quote:c.quote,text:finalText(c)+((c.replies||[]).length?' [respuestas: '+c.replies.map(r=>r.text).join(' | ')+']':'')}))}); }
-    catch(e){ summary=`Se realizaron ${list.length} observaciones sobre tu trabajo. Revisa cada comentario junto a la parte del texto correspondiente.`; note='🤖 IA no disponible. Resumen básico; editable.'; } }
+  if(active.length){ try{ summary=await aiCall({mode:'consolidate',doc:cur.submission.student_name||'',comments:active.map(c=>({quote:c.quote,text:finalText(c)+((c.replies||[]).length?' [respuestas: '+c.replies.map(r=>r.text).join(' | ')+']':'')}))}); }
+    catch(e){ summary=`Se realizaron ${active.length} observaciones sobre tu trabajo. Revisa cada comentario junto a la parte del texto correspondiente.`; note='🤖 IA no disponible. Resumen básico; editable.'; } }
   cur.submission.summary=summary; if(summary) await sb.from('submissions').update({summary}).eq('id',cur.submission.id);
   btn.disabled=false; btn.textContent='✨ Consolidar';
-  buildReport(cur.submission, cur.evaluation, list, summary, note);
+  buildReport(cur.submission, cur.evaluation, all, summary, note);
 };
 async function openReport(sub){
   cur.submission=sub;
   const {data}=await sb.from('comments').select('*').eq('submission_id',sub.id).order('position');
-  const list=(data||[]).map(c=>({quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai,resolved:!!c.resolved,replies:c.replies||[]})).filter(c=>!c.resolved && finalText(c).trim());
-  buildReport(sub, cur.evaluation, list, sub.summary||('Se realizaron '+list.length+' observación(es) sobre el trabajo.'), '');
+  const all=(data||[]).map(c=>({quote:c.quote||'',text:c.body||'',aiText:c.ai_text||'',useAi:!!c.use_ai,resolved:!!c.resolved,replies:c.replies||[]})).filter(c=>finalText(c).trim());
+  buildReport(sub, cur.evaluation, all, sub.summary||('Se realizaron '+all.filter(c=>!c.resolved).length+' observación(es) sobre el trabajo.'), '');
+}
+function commentsHTML(list, includeResolved){
+  const shown=list.filter(c=>(includeResolved||!c.resolved) && finalText(c).trim());
+  let h='<h4>Comentarios</h4>'+(shown.length?'':'<p class="rc" style="color:#999">Sin comentarios.</p>');
+  shown.forEach((c,i)=>{ h+=`<div class="rq">“${esc(c.quote)}”${c.resolved?' <span style="font-size:10px;color:#999">(resuelto)</span>':''}</div><p class="rc"${c.resolved?' style="text-decoration:line-through;color:#999"':''}><b>${i+1}.</b> ${esc(finalText(c))}</p>`;
+    (c.replies||[]).forEach(r=>h+=`<p class="rc" style="margin:2px 0 9px 18px;color:#555">↳ <b>${esc(shortMail(r.author||''))}:</b> ${esc(r.text)}</p>`); });
+  return h;
 }
 function buildReport(sub, ev, list, summary, note){
   const maxMap=(ev&&ev.section_max)||{}; const sc=sub.scores||{}; const secsMax=((ev&&ev.sections)||[]).filter(s=>maxMap[s]);
@@ -1023,11 +1086,7 @@ function buildReport(sub, ev, list, summary, note){
   const nota=mx?computeGrade(tot,mx,ev.exigencia):null; const temas=(ev&&ev.custom_themes)||[];
   let html=note?`<div class="banner">${note}</div>`:'';
   html+=`<div id="blkSummary"><h4>Resumen de la corrección</h4><p class="rc">${esc(summary||'')}</p></div>`;
-  const shown=list.filter(c=>!c.resolved);
-  html+='<div id="blkComments"><h4>Comentarios</h4>'+(shown.length?'':'<p class="rc" style="color:#999">Sin comentarios.</p>');
-  shown.forEach((c,i)=>{ html+=`<div class="rq">“${esc(c.quote)}”</div><p class="rc"><b>${i+1}.</b> ${esc(finalText(c))}</p>`;
-    (c.replies||[]).forEach(r=>html+=`<p class="rc" style="margin:2px 0 9px 18px;color:#555">↳ <b>${esc(shortMail(r.author||''))}:</b> ${esc(r.text)}</p>`); });
-  html+='</div>';
+  html+='<div id="blkComments">'+commentsHTML(list,false)+'</div>';
   if(secsMax.length){
     html+=`<div id="blkPunt" style="display:none"><h4>Puntajes</h4><table class="board" style="font-size:13px"><thead><tr><th style="text-align:left">Sección</th><th>Puntaje</th><th>Máximo</th></tr></thead><tbody>${secsMax.map(s=>`<tr><td class="nm">${esc(s)}</td><td>${sc[s]??'—'}</td><td>${maxMap[s]}</td></tr>`).join('')}<tr><td class="nm"><b>Total</b></td><td><b>${tot}</b></td><td><b>${mx}</b></td></tr></tbody></table></div>`;
     html+=`<div id="blkNota" style="display:none"><h4>Nota final</h4><p class="rc" style="font-size:17px"><b>${nota!=null?nota.toFixed(1):'—'}</b></p></div>`;
@@ -1040,6 +1099,7 @@ function buildReport(sub, ev, list, summary, note){
     const cb=$('#'+tg); if(!cb)return; cb.checked=def; const el=document.getElementById(blk);
     cb.onchange=()=>{ if(el) el.style.display=cb.checked?'':'none'; }; if(el) el.style.display=cb.checked?'':'none'; });
   const obsCb=$('#tgObs'); obsCb.checked=false; obsCb.onchange=()=>{ $('#obsWrap').style.display=obsCb.checked?'':'none'; }; $('#obsWrap').style.display='none';
+  const rsCb=$('#tgResolved'); if(rsCb){ rsCb.checked=false; rsCb.onchange=()=>{ const b=$('#blkComments'); if(b) b.innerHTML=commentsHTML(list, rsCb.checked); }; }
   $('#reportDlg').showModal();
 }
 $('#closeDlg').onclick=()=>$('#reportDlg').close();
@@ -1061,6 +1121,19 @@ async function del(table,id,msg,then){ if(!confirm(msg))return; const {error}=aw
 function mk(tag,cls,txt,onclick){ const e=document.createElement(tag); e.className=cls; if(txt)e.textContent=txt; if(onclick)e.onclick=onclick; return e; }
 function statusLabel(s){ return ({pendiente:'pendiente',en_progreso:'en progreso',corregido:'corregido',enviado:'enviado'})[s]||s; }
 function esc(s){ return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+function onViewerScroll(){
+  const viewer=$('#viewer'); if(!viewer) return;
+  const boxes=viewer.querySelectorAll('.hlBox[data-cid]'); if(!boxes.length) return;
+  const vTop=viewer.getBoundingClientRect().top+8;
+  let best=null,bestTop=-1e9,below=null,belowTop=1e9;
+  boxes.forEach(b=>{ const t=b.getBoundingClientRect().top;
+    if(t<=vTop && t>bestTop){ bestTop=t; best=b.dataset.cid; }
+    if(t>vTop && t<belowTop){ belowTop=t; below=b.dataset.cid; } });
+  const target=best||below;
+  if(target && target!==window._lastSync){ window._lastSync=target; const card=$('#list')&&$('#list').querySelector('.cmt[data-id="'+target+'"]'); if(card) card.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+}
+(function(){ const v=$('#viewer'); if(v) v.addEventListener('scroll',()=>{ clearTimeout(window._syncT); window._syncT=setTimeout(onViewerScroll,120); }); })();
 
 sb.auth.getSession();
 </script>
