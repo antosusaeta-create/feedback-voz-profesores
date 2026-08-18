@@ -337,7 +337,7 @@ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudf
 const $=s=>document.querySelector(s);
 let user=null;
 let cur={course:null,evaluation:null,submission:null};
-let courses=[], categories=[], sharedEvals=[], sharedCourses=[], invitations=[], courseInvites=[], notifs=[], evalCache={}, expanded={}, drag=null;
+let courses=[], categories=[], sharedEvals=[], sharedCourses=[], invitations=[], courseInvites=[], notifs=[], evalCache={}, expanded={}, drag=null, curRole='owner';
 function isDone(v){ return v==='corregido' || (v&&typeof v==='object'&&v.done); }
 function shortMail(e){ return (e||'').split('@')[0]; }
 function trafficColor(p){ return p<20?'#dc2626':p<50?'#f97316':p<80?'#f59e0b':'#059669'; }
@@ -402,6 +402,8 @@ async function renderCourseCollab(co){ const {data}=await sb.from('course_collab
     row.querySelector('.ccrole').onchange=async(e)=>{ await sb.from('course_collaborators').update({role:e.target.value}).eq('id',c.id); };
     row.querySelector('.ccdel').onclick=async()=>{ await sb.from('course_collaborators').delete().eq('id',c.id); renderCourseCollab(co); };
     box.appendChild(row); }); }
+async function fetchMyRole(cid){ if(!cid) return 'ayudante'; const {data}=await sb.from('course_collaborators').select('role').eq('course_id',cid).eq('status','accepted'); const m=(data||[])[0]; return m?(m.role||'ayudante'):'ayudante'; }
+function canEdit(){ return curRole==='owner'||curRole==='profesor'; }
 function renderSharedCourseNode(el,co){
   const row=mk('div','sb-course'+(cur.course&&cur.course.id===co.id?' sel':''),'');
   row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span class="nm">${esc(co.name)}</span>`;
@@ -548,8 +550,12 @@ async function newEvaluation(co){ const name=prompt('Nombre de la evaluación (e
   (evalCache[co.id]=evalCache[co.id]||[]).push(data); expanded[co.id]=true; renderSidebar(); selectEvaluation(data); }
 
 function goHome(){ cur={course:null,evaluation:null,submission:null}; crumbs(); renderSidebar(); showWelcome(); }
-async function selectCourse(co){ if(cur.submission) await saveNow(); cur={course:co,evaluation:null,submission:null}; expanded['cat_'+(co.category_id||'root')]=true; expanded[co.id]=true; await loadEvals(co); showCorrector(false); crumbs(); renderSidebar(); renderEvaluationsMain(co); }
-async function selectEvaluation(ev){ if(cur.submission) await saveNow(); const co=courses.find(c=>c.id===ev.course_id)||cur.course; cur={course:co,evaluation:ev,submission:null}; showCorrector(false); crumbs(); renderSidebar(); renderSubmissionsMain(ev); }
+async function selectCourse(co){ if(cur.submission) await saveNow(); cur={course:co,evaluation:null,submission:null}; expanded['cat_'+(co.category_id||'root')]=true; expanded[co.id]=true;
+  curRole = co.owner===user.id ? 'owner' : await fetchMyRole(co.id);
+  await loadEvals(co); showCorrector(false); crumbs(); renderSidebar(); renderEvaluationsMain(co); }
+async function selectEvaluation(ev){ if(cur.submission) await saveNow(); const co=courses.find(c=>c.id===ev.course_id)||sharedCourses.find(c=>c.id===ev.course_id)||cur.course; cur={course:co,evaluation:ev,submission:null};
+  curRole = (co && co.owner===user.id) ? 'owner' : await fetchMyRole(ev.course_id);
+  showCorrector(false); crumbs(); renderSidebar(); renderSubmissionsMain(ev); }
 
 /* ---------------- MAIN: WELCOME ---------------- */
 function showWelcome(){ $('#mainPanel').innerHTML=`<div class="welcome"><div>🎤</div>
@@ -571,7 +577,7 @@ function renderEvaluationsMain(co){
     el.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();renderEvaluationsMain(co);});};
     g.appendChild(el);
   });
-  const nc=mk('div','cardi newcard','＋ Nueva evaluación',()=>newEvaluation(co)); g.appendChild(nc);
+  if(canEdit()){ const nc=mk('div','cardi newcard','＋ Nueva evaluación',()=>newEvaluation(co)); g.appendChild(nc); }
   loadEvalProgress(co);
 }
 async function loadEvalProgress(co){
@@ -593,23 +599,21 @@ function evalProgress(ev,subs){
 
 /* ---------------- MAIN: ENTREGAS ---------------- */
 async function renderSubmissionsMain(ev){
-  const v=$('#mainPanel');
+  const v=$('#mainPanel'); const edit=canEdit();
   v.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap">
       <h2 class="title" style="margin:0">${esc(ev.name)}</h2>
       <button id="metBtn" class="sm">📊 Métricas</button>
-      <button id="secBtn" class="sm">⚙️ Secciones</button>
-      <button id="colBtn" class="sm">👥 Colaboradores</button></div>
-    <p class="hint">Sube los PDF de los alumnos. Cada uno es una entrega.</p>
-    <div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir (puedes varios).</div>
+      ${edit?'<button id="secBtn" class="sm">⚙️ Secciones</button><button id="colBtn" class="sm">👥 Colaboradores</button>':'<span class="pill">solo corrección</span>'}</div>
+    <p class="hint">${edit?'Sube los PDF de los alumnos. Cada uno es una entrega.':'Abre una entrega y corrige. Marca tu avance al terminar.'}</p>
+    ${edit?'<div class="drop" id="drop">📥 <b>Arrastra PDFs aquí</b> o haz clic para subir (puedes varios).</div>':''}
     <div id="subs"><p class="hint">Cargando…</p></div>`;
   $('#metBtn').onclick=()=>renderMetricsMain(ev);
-  $('#secBtn').onclick=()=>editSections(ev);
-  $('#colBtn').onclick=()=>openCollab(ev);
-  const drop=$('#drop');
-  drop.onclick=()=>pickFiles(ev);
-  drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
-  drop.addEventListener('dragleave',e=>{e.preventDefault();drop.classList.remove('drag');});
-  drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag'); if(e.dataTransfer.files.length) uploadSubs(e.dataTransfer.files,ev);});
+  if(edit){ $('#secBtn').onclick=()=>editSections(ev); $('#colBtn').onclick=()=>openCollab(ev);
+    const drop=$('#drop'); drop.onclick=()=>pickFiles(ev);
+    drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
+    drop.addEventListener('dragleave',e=>{e.preventDefault();drop.classList.remove('drag');});
+    drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag'); if(e.dataTransfer.files.length) uploadSubs(e.dataTransfer.files,ev);});
+  }
   refreshEval(ev);
 }
 function refreshEval(ev){ if((ev.sections||[]).length) refreshBoard(ev); else refreshSubs(ev); }
@@ -654,7 +658,7 @@ async function refreshBoard(ev){
   const people=[user.email].concat((cbsRes.data||[]).map(c=>c.user_email)).concat((ccRes.data||[]).map(c=>c.user_email)).filter((v,i,a)=>a.indexOf(v)===i);
   const assign=ev.section_assignments||{};
   if(!data.length){ box.innerHTML='<p class="hint">Sube PDFs arriba para empezar.</p>'; return; }
-  const maxMap=ev.section_max||{}; const hasScores=secs.some(s=>maxMap[s]);
+  const maxMap=ev.section_max||{}; const hasScores=secs.some(s=>maxMap[s]); const edit=canEdit();
   let done=0; const total=data.length*secs.length; let rows='';
   data.forEach(s=>{ const prog=s.section_progress||{}; const sc=s.scores||{};
     let sdone=0; secs.forEach(sec=>{ if(isDone(prog[sec]))sdone++; }); done+=sdone;
@@ -670,12 +674,12 @@ async function refreshBoard(ev){
       rows+=`<td class="cell"><span class="bdot${on?' done':''} dotc" data-sub="${s.id}" data-sec="${esc(sec)}">✓</span>${tag}${scoreI}</td>`; });
     if(hasScores){ const nota=rowMax?computeGrade(rowTot,rowMax,ev.exigencia):null;
       rows+=`<td>${rowMax?rowTot+'/'+rowMax:'—'}</td><td><b>${nota!=null?nota.toFixed(1):'—'}</b></td>`; }
-    rows+=`<td><select class="asgRow" data-sub="${s.id}" style="width:auto;font-size:11px;padding:3px">${rowOpts}</select></td>`;
+    rows+=`<td>${edit?`<select class="asgRow" data-sub="${s.id}" style="width:auto;font-size:11px;padding:3px">${rowOpts}</select>`:esc(shortMail(s.assignee||'—'))}</td>`;
     rows+=`<td style="white-space:nowrap"><button class="bopen open" data-sub="${s.id}">Corregir</button> <button class="bopen rep" data-sub="${s.id}" title="Ver reporte">📄</button></td></tr>`; });
   const pct=total?Math.round(100*done/total):0;
   const heads=secs.map(sec=>{ const c=assign[sec]||'';
     const opts=['<option value="">— asignar —</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${c===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
-    return `<th>${esc(sec)}<br><select class="asignCol" data-sec="${esc(sec)}" style="font-size:10px;padding:2px;margin-top:4px;width:auto">${opts}</select></th>`; }).join('');
+    return `<th>${esc(sec)}${edit?`<br><select class="asignCol" data-sec="${esc(sec)}" style="font-size:10px;padding:2px;margin-top:4px;width:auto">${opts}</select>`:''}</th>`; }).join('');
   const scoreHeads=hasScores?'<th>Total</th><th>Nota</th>':'';
   box.innerHTML=`<div style="font-size:13px;color:var(--muted);display:flex;align-items:center"><span class="light" style="background:${trafficColor(pct)}"></span>Avance <b style="color:var(--ink);margin:0 4px">${done}/${total}</b> · ${pct}%<button id="expCsv" class="sm" style="margin-left:14px">⬇️ Exportar Excel</button></div>
     <div class="pbar"><div style="width:${pct}%;background:${trafficColor(pct)}"></div></div>
@@ -736,20 +740,21 @@ async function refreshSubs(ev){
   if(!data.length){ subs.innerHTML='<p class="hint">Aún no hay entregas. Sube el primer PDF arriba.</p>'; return; }
   data.forEach(s=>{
     const el=mk('div','row-item','');
+    const edit=canEdit();
     const opts=['<option value="">— responsable —</option>'].concat(people.map(p=>`<option value="${esc(p)}" ${s.assignee===p?'selected':''}>${esc(shortMail(p))}</option>`)).join('');
     el.innerHTML=`<span class="light lightbtn" title="clic para cambiar estado" style="background:${statusColor(s.status)};cursor:pointer;width:13px;height:13px"></span>
       <span class="nm">${esc(s.student_name||'Entrega')}</span>
       <span class="status ${s.status}">${statusLabel(s.status)}</span>
-      <select class="asg" style="width:auto;font-size:12px;padding:5px 7px;margin-left:auto">${opts}</select>
+      ${edit?`<select class="asg" style="width:auto;font-size:12px;padding:5px 7px;margin-left:auto">${opts}</select>`:`<span style="margin-left:auto;font-size:11px;color:var(--muted)">${s.assignee?esc(shortMail(s.assignee)):''}</span>`}
       <span style="display:flex;gap:6px">
-        <button class="sm open">Corregir</button><button class="sm rep" title="Ver reporte">📄</button><button class="sm rename">✏️</button><button class="sm delb">🗑</button></span>`;
+        <button class="sm open">Corregir</button><button class="sm rep" title="Ver reporte">📄</button>${edit?'<button class="sm rename">✏️</button><button class="sm delb">🗑</button>':''}</span>`;
     el.querySelector('.rep').onclick=()=>openReport(s);
     el.querySelector('.lightbtn').onclick=async()=>{ const order=['pendiente','en_progreso','corregido']; const nx=order[(order.indexOf(s.status)+1)%3]; s.status=nx; await sb.from('submissions').update({status:nx}).eq('id',s.id); refreshSubs(ev); };
-    el.querySelector('.asg').onchange=async(e)=>{ s.assignee=e.target.value||null; await sb.from('submissions').update({assignee:s.assignee}).eq('id',s.id); notifyAssign(s.assignee,ev); };
     el.querySelector('.open').onclick=()=>openSubmission(s);
     el.querySelector('.nm').onclick=()=>openSubmission(s);
-    el.querySelector('.rename').onclick=async()=>{ const n=prompt('Nombre del alumno:',s.student_name||''); if(n===null)return; await sb.from('submissions').update({student_name:n}).eq('id',s.id); refreshSubs(ev); };
-    el.querySelector('.delb').onclick=()=>del('submissions',s.id,'¿Borrar esta entrega?',()=>refreshSubs(ev));
+    if(edit){ el.querySelector('.asg').onchange=async(e)=>{ s.assignee=e.target.value||null; await sb.from('submissions').update({assignee:s.assignee}).eq('id',s.id); notifyAssign(s.assignee,ev); };
+      el.querySelector('.rename').onclick=async()=>{ const n=prompt('Nombre del alumno:',s.student_name||''); if(n===null)return; await sb.from('submissions').update({student_name:n}).eq('id',s.id); refreshSubs(ev); };
+      el.querySelector('.delb').onclick=()=>del('submissions',s.id,'¿Borrar esta entrega?',()=>refreshSubs(ev)); }
     subs.appendChild(el);
   });
 }
