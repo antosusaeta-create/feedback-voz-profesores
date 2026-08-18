@@ -6,6 +6,7 @@
 <title>Asistente de Feedback por Voz</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{--bg:#f6f7f9;--panel:#fff;--ink:#1d2430;--muted:#6b7280;--line:#e5e7eb;
         --accent:#4f46e5;--accent-soft:#eef2ff;--hl:rgba(251,191,36,.4);--hl-active:rgba(251,191,36,.75);
@@ -471,7 +472,7 @@ function renderSidebar(){
   bCurso.ondragleave=()=>bCurso.classList.remove('dropinto');
   bCurso.ondrop=()=>{ bCurso.classList.remove('dropinto'); if(drag&&drag.type==='course') moveCourse(drag.id,null,null); };
   el.appendChild(bCurso);
-  courses.filter(c=>!c.category_id).forEach(co=>renderCourseNode(el,co));
+  courses.filter(c=>!c.category_id && !c.archived).forEach(co=>renderCourseNode(el,co));
   categories.forEach(cat=>{
     const key='cat_'+cat.id; if(expanded[key]===undefined) expanded[key]=true;
     const head=mk('div','sb-cat','');
@@ -484,9 +485,14 @@ function renderSidebar(){
     head.ondragleave=()=>head.classList.remove('dropinto');
     head.ondrop=()=>{ head.classList.remove('dropinto'); if(drag&&drag.type==='course') moveCourse(drag.id,cat.id,null); };
     el.appendChild(head);
-    if(expanded[key]){ courses.filter(c=>c.category_id===cat.id).forEach(co=>renderCourseNode(el,co));
+    if(expanded[key]){ courses.filter(c=>c.category_id===cat.id && !c.archived).forEach(co=>renderCourseNode(el,co));
       el.appendChild(mk('div','sb-add-course','＋ curso',()=>newCourse(cat.id))); }
   });
+  const arch=courses.filter(c=>c.archived);
+  if(arch.length){ const key='cat_archivo'; if(expanded[key]===undefined) expanded[key]=false;
+    const head=mk('div','sb-cat',''); head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm" style="color:var(--muted)">ARCHIVO</span>`;
+    head.onclick=()=>{expanded[key]=!expanded[key];renderSidebar();}; el.appendChild(head);
+    if(expanded[key]) arch.forEach(co=>renderCourseNode(el,co)); }
   if(sharedEvals.length || sharedCourses.length){
     const key='cat_shared'; if(expanded[key]===undefined) expanded[key]=true;
     const head=mk('div','sb-cat',''); head.innerHTML=`<span class="chev">${expanded[key]?'▾':'▸'}</span><span class="nm">COMPARTIDAS CONMIGO</span>`;
@@ -572,8 +578,10 @@ function showWelcome(){ $('#mainPanel').innerHTML=`<div class="welcome"><div>�
 /* ---------------- MAIN: EVALUACIONES ---------------- */
 function renderEvaluationsMain(co){
   const v=$('#mainPanel'); const isOwner=co.owner===user.id;
-  v.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px"><h2 class="title" style="margin:0">${esc(co.name)}</h2>${isOwner?'<button id="cfgBtn" class="sm">⚙️ Configurar curso</button>':'<span class="pill">compartido contigo</span>'}</div><p class="hint">Evaluaciones de este curso.</p><div class="grid" id="g"></div>`;
+  v.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap"><h2 class="title" style="margin:0">${esc(co.name)}</h2>${isOwner?`<button id="cfgBtn" class="sm">⚙️ Configurar curso</button><button id="expZip" class="sm">⬇️ Exportar</button><button id="archBtn" class="sm">${co.archived?'Desarchivar':'🗄 Archivar'}</button>`:'<span class="pill">compartido contigo</span>'}</div><p class="hint">Evaluaciones de este curso.</p><div class="grid" id="g"></div>`;
   const cfg=$('#cfgBtn'); if(cfg) cfg.onclick=()=>openCourseConfig(co);
+  const ez=$('#expZip'); if(ez) ez.onclick=()=>exportCourseZip(co,ez);
+  const ab=$('#archBtn'); if(ab) ab.onclick=async()=>{ co.archived=!co.archived; await sb.from('courses').update({archived:co.archived}).eq('id',co.id); renderSidebar(); goHome(); alert(co.archived?'Curso archivado. Lo encuentras en “ARCHIVO”, abajo en el menú.':'Curso desarchivado.'); };
   const g=$('#g');
   (evalCache[co.id]||[]).forEach(ev=>{
     const el=mk('div','cardi','');
@@ -602,6 +610,35 @@ function evalProgress(ev,subs){
   else { total=subs.length; done=subs.filter(s=>s.status==='corregido').length; }
   const pct=total?Math.round(100*done/total):0;
   return {pct,color:trafficColor(pct),txt:pct+'% corregido'};
+}
+function safeName(n){ return (n||'sin-nombre').replace(/[\/\\:*?"<>|]/g,'-').slice(0,80); }
+async function exportCourseZip(co, btn){
+  if(!window.JSZip){ alert('No se pudo cargar el compresor (¿sin internet?).'); return; }
+  if(btn){ btn.disabled=true; btn.textContent='Exportando…'; }
+  try{
+    const zip=new JSZip();
+    const {data:evs}=await sb.from('evaluations').select('*').eq('course_id',co.id).order('created_at');
+    for(const ev of (evs||[])){
+      const folder=zip.folder(safeName(ev.name));
+      const {data:subs}=await sb.from('submissions').select('*').eq('evaluation_id',ev.id).order('created_at');
+      const secs=ev.sections||[]; const maxMap=ev.section_max||{};
+      let csv=['Alumno',...secs,'Total','Máximo','Nota','Estado'].join(';')+'\n';
+      for(const s of (subs||[])){
+        const sc=s.scores||{}; let tot=0,mx=0; const cells=secs.map(x=>{ tot+=Number(sc[x]||0); mx+=Number(maxMap[x]||0); return sc[x]??''; });
+        const nota=mx?computeGrade(tot,mx,ev.exigencia):'';
+        csv+=[s.student_name||'',...cells,tot,mx,(nota!=null?nota:''),s.status||''].join(';')+'\n';
+        if(s.file_path){ const dl=await sb.storage.from('documentos').download(s.file_path); if(!dl.error) folder.file(safeName(s.student_name||'entrega')+'.pdf', dl.data); }
+        const {data:cms}=await sb.from('comments').select('*').eq('submission_id',s.id).order('position');
+        let rep='RETROALIMENTACION — '+(s.student_name||'')+'\n\n'+(s.summary||'')+'\n\nComentarios:\n';
+        (cms||[]).filter(c=>!c.resolved).forEach((c,i)=>{ const t=(c.use_ai&&c.ai_text)?c.ai_text:c.body; if(t) rep+=(i+1)+'. ('+(c.quote||'')+')\n   '+t+'\n'; });
+        folder.file(safeName(s.student_name||'entrega')+'-reporte.txt', rep);
+      }
+      folder.file('puntajes.csv', '﻿'+csv);
+    }
+    const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=safeName(co.name)+'.zip'; a.click();
+  }catch(e){ alert('Error al exportar: '+(e.message||e)); }
+  if(btn){ btn.disabled=false; btn.textContent='⬇️ Exportar'; }
 }
 
 /* ---------------- MAIN: ENTREGAS ---------------- */
