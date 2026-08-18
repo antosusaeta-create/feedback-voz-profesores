@@ -195,6 +195,9 @@
     <input id="email" type="email" placeholder="profe@colegio.cl">
     <label>Contraseña</label>
     <input id="pass" type="password" placeholder="mínimo 6 caracteres">
+    <div style="margin-top:14px;font-size:11px;color:var(--muted)">Solo al crear cuenta (opcional):</div>
+    <select id="teaches" style="margin-top:6px"><option value="">¿Qué enseñas?</option><option>Universidad</option><option>Colegio</option><option>Preuniversitario</option><option>Instituto / CFT</option><option>Otro</option></select>
+    <input id="institution" placeholder="Institución (opcional)" style="margin-top:8px">
     <div style="display:flex;gap:8px;margin-top:16px">
       <button id="loginBtn" class="primary" style="flex:1">Entrar</button>
       <button id="signupBtn" style="flex:1">Crear cuenta</button>
@@ -335,6 +338,8 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const $=s=>document.querySelector(s);
+const IC_COURSE='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M4 19V6a2 2 0 0 1 2-2h9a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M8 4v15"/></svg>';
+const IC_EVAL='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>';
 let user=null;
 let cur={course:null,evaluation:null,submission:null};
 let courses=[], categories=[], sharedEvals=[], sharedCourses=[], invitations=[], courseInvites=[], notifs=[], evalCache={}, expanded={}, drag=null, curRole='owner';
@@ -348,8 +353,10 @@ function statusColor(st){ return (st==='corregido'||st==='enviado')?'#059669':st
 /* ---------------- AUTH ---------------- */
 function authMsg(t,ok){ const m=$('#authMsg'); m.className='msg '+(ok?'ok':'err'); m.textContent=t; }
 $('#loginBtn').onclick=async()=>{ const {error}=await sb.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#pass').value}); if(error)authMsg(error.message); };
-$('#signupBtn').onclick=async()=>{ const {data,error}=await sb.auth.signUp({email:$('#email').value.trim(),password:$('#pass').value});
-  if(error){authMsg(error.message);return;} authMsg(data.session?'¡Cuenta creada!':'Cuenta creada. Si pide confirmar correo, confírmalo o desactiva "Confirm email" en Supabase.',true); };
+$('#signupBtn').onclick=async()=>{ const em=$('#email').value.trim(); const {data,error}=await sb.auth.signUp({email:em,password:$('#pass').value});
+  if(error){authMsg(error.message);return;}
+  if(data.user){ try{ await sb.from('profiles').upsert({id:data.user.id,email:em,teaches:$('#teaches').value||null,institution:($('#institution').value||'').trim()||null}); }catch(e){} }
+  authMsg(data.session?'¡Cuenta creada!':'Cuenta creada. Si pide confirmar correo, confírmalo o desactiva "Confirm email" en Supabase.',true); };
 $('#logout').onclick=async()=>{ await saveNow(); await sb.auth.signOut(); };
 let currentUid=null;
 sb.auth.onAuthStateChange((_e,session)=>{ const u=session?.user||null;
@@ -406,12 +413,12 @@ async function fetchMyRole(cid){ if(!cid) return 'ayudante'; const {data}=await 
 function canEdit(){ return curRole==='owner'||curRole==='profesor'; }
 function renderSharedCourseNode(el,co){
   const row=mk('div','sb-course'+(cur.course&&cur.course.id===co.id?' sel':''),'');
-  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span class="nm">${esc(co.name)}</span>`;
+  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>${IC_COURSE} <span class="nm">${esc(co.name)}</span>`;
   row.querySelector('.chev').onclick=(e)=>{e.stopPropagation();toggleCourse(co);};
   row.querySelector('.nm').onclick=()=>selectCourse(co);
   el.appendChild(row);
   if(expanded[co.id]) (evalCache[co.id]||[]).forEach(ev=>{ const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),'');
-    er.innerHTML=`📝 <span class="nm">${esc(ev.name)}</span>`; er.querySelector('.nm').onclick=()=>selectEvaluation(ev); el.appendChild(er); }); }
+    er.innerHTML=`${IC_EVAL} <span class="nm">${esc(ev.name)}</span>`; er.querySelector('.nm').onclick=()=>selectEvaluation(ev); el.appendChild(er); }); }
 function renderBell(){ const n=invitations.filter(i=>i.status==='pending').length + courseInvites.filter(i=>i.status==='pending').length + notifs.length; const b=$('#bellBadge');
   if(n){ b.textContent=n; b.style.display='inline-block'; } else b.style.display='none'; }
 function renderNotif(){ const p=$('#notifPanel');
@@ -493,7 +500,7 @@ function renderSidebar(){
 function renderCourseNode(el,co){
   const isSel=cur.course&&cur.course.id===co.id;
   const row=mk('div','sb-course'+(isSel?' sel':''),''); row.setAttribute('draggable','true');
-  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>📚 <span class="nm">${esc(co.name)}</span><span class="ed" title="Renombrar">✎</span><span class="x" title="Borrar">✕</span>`;
+  row.innerHTML=`<span class="chev">${expanded[co.id]?'▾':'▸'}</span>${IC_COURSE} <span class="nm">${esc(co.name)}</span><span class="ed" title="Renombrar">✎</span><span class="x" title="Borrar">✕</span>`;
   row.querySelector('.chev').onclick=(e)=>{e.stopPropagation();toggleCourse(co);};
   row.querySelector('.nm').onclick=()=>selectCourse(co);
   row.querySelector('.ed').onclick=(e)=>{e.stopPropagation();renameItem('courses',co);};
@@ -505,7 +512,7 @@ function renderCourseNode(el,co){
   el.appendChild(row);
   if(expanded[co.id]){ (evalCache[co.id]||[]).forEach(ev=>{
       const er=mk('div','sb-eval'+(cur.evaluation&&cur.evaluation.id===ev.id?' sel':''),''); er.setAttribute('draggable','true');
-      er.innerHTML=`📝 <span class="nm">${esc(ev.name)}</span><span class="ed" title="Renombrar">✎</span><span class="x">✕</span>`;
+      er.innerHTML=`${IC_EVAL} <span class="nm">${esc(ev.name)}</span><span class="ed" title="Renombrar">✎</span><span class="x">✕</span>`;
       er.querySelector('.nm').onclick=()=>selectEvaluation(ev);
       er.querySelector('.ed').onclick=(e)=>{e.stopPropagation();renameItem('evaluations',ev,()=>{loadEvals(co,true).then(renderSidebar);});};
       er.querySelector('.x').onclick=(e)=>{e.stopPropagation();del('evaluations',ev.id,'¿Borrar esta evaluación?',async()=>{await loadEvals(co,true);renderSidebar();});};
@@ -570,7 +577,7 @@ function renderEvaluationsMain(co){
   const g=$('#g');
   (evalCache[co.id]||[]).forEach(ev=>{
     const el=mk('div','cardi','');
-    el.innerHTML=`<span class="x">✕</span><h3>📝 ${esc(ev.name)}</h3>
+    el.innerHTML=`<span class="x">✕</span><h3>${IC_EVAL} ${esc(ev.name)}</h3>
       <div class="meta"><span class="pill">${ev.type==='control'?'Control · varios alumnos':'Ensayo/Tesis'}</span></div>
       <div class="meta" id="prog-${ev.id}" style="margin-top:7px"><span class="light" style="background:#9ca3af"></span>cargando…</div>`;
     el.onclick=(e)=>{ if(!e.target.classList.contains('x')) selectEvaluation(ev); };
