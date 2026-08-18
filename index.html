@@ -209,6 +209,7 @@
     <span class="brand"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="9" y1="21" x2="15" y2="21"/></svg>Feedback por Voz</span>
     <span class="crumbs" id="crumbs"></span>
     <span class="right">
+      <button id="helpBtn" class="sm" title="Cómo funciona">?</button>
       <button id="quickBtn" class="sm">⚡ Documento rápido</button>
       <span style="position:relative">
         <button id="bell" class="sm" style="position:relative">🔔<span id="bellBadge" style="display:none;position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;font-size:9px;min-width:15px;height:15px;border-radius:20px;line-height:15px;text-align:center;padding:0 3px"></span></button>
@@ -248,6 +249,15 @@
 </div>
 
 <input type="file" id="quickFile" accept=".pdf" hidden>
+
+<dialog id="introDlg">
+  <div id="introBody" style="padding:30px 28px 10px;text-align:center;min-height:220px"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-top:1px solid var(--line)">
+    <button id="introSkip" class="sm">Saltar</button>
+    <div id="introDots" style="display:flex;gap:6px;align-items:center"></div>
+    <button id="introNext" class="primary sm">Siguiente</button>
+  </div>
+</dialog>
 
 <dialog id="courseDlg">
   <div class="dlg-head"><h3 id="courseDlgTitle" style="margin:0;font-size:15px">Configurar curso</h3><button id="courseDlgClose" class="sm" style="margin-left:auto">Cerrar</button></div>
@@ -352,6 +362,7 @@ sb.auth.onAuthStateChange((_e,session)=>{ const u=session?.user||null;
 async function boot(){
   const [cats,cos]=await Promise.all([ sb.from('categories').select('*').order('position').order('created_at'), sb.from('courses').select('*').order('position').order('created_at') ]);
   categories=cats.data||[]; courses=cos.data||[]; sharedEvals=await loadSharedEvals(); sharedCourses=await loadSharedCourses(); await loadInvitations(); await loadCourseInvites(); await loadNotifs(); applySb(); renderSidebar(); renderBell(); showWelcome();
+  if(!localStorage.getItem('seenIntro')) setTimeout(openIntro,400);
   if(!window._notifPoll){ window._notifPoll=setInterval(async()=>{ try{ await loadInvitations(); await loadCourseInvites(); await loadNotifs(); renderBell(); }catch(e){} }, 60000); }
 }
 async function loadSharedEvals(){
@@ -1134,6 +1145,25 @@ function onViewerScroll(){
   if(target && target!==window._lastSync){ window._lastSync=target; const card=$('#list')&&$('#list').querySelector('.cmt[data-id="'+target+'"]'); if(card) card.scrollIntoView({block:'nearest',behavior:'smooth'}); }
 }
 (function(){ const v=$('#viewer'); if(v) v.addEventListener('scroll',()=>{ clearTimeout(window._syncT); window._syncT=setTimeout(onViewerScroll,120); }); })();
+
+const introSteps=[
+  {e:'🎤',t:'Corrige hablando',d:'Bienvenida. Esta plataforma te deja corregir documentos con la voz en vez de escribir. Este recorrido de 6 pasos te muestra lo esencial. Puedes reabrirlo cuando quieras con el botón “?” de arriba.'},
+  {e:'📚',t:'1 · Organiza tu trabajo',d:'A la izquierda creas un curso con “＋ Nuevo curso”, o una categoría grande (ej: tu universidad) con “＋ Nueva categoría”. Puedes renombrar (✎) y arrastrar para reordenar.'},
+  {e:'📝',t:'2 · Crea una evaluación',d:'Dentro de un curso, usa “＋ evaluación” para crear una tesis, un control o un ensayo.'},
+  {e:'📄',t:'3 · Sube los documentos',d:'Arrastra los PDF de los alumnos: cada uno es una entrega. ¿Un PDF suelto? Usa “⚡ Documento rápido”, arriba.'},
+  {e:'🗣️',t:'4 · Comenta con la voz',d:'Abre una entrega, selecciona un pasaje del texto y presiona “Comentar selección”: hablas y el comentario queda anclado ahí. Puedes pulirlo con la IA, responder y resolver hilos.'},
+  {e:'📊',t:'5 · Consolida y entrega',d:'“Consolidar” arma el reporte del alumno. Eliges qué incluir (comentarios, puntajes, nota, temas) y exportas a Word o PDF.'},
+  {e:'👥',t:'6 · Colabora (opcional)',d:'Con “⚙️ Configurar curso” invitas profesores o ayudantes por correo, con rol, y se reparten el trabajo entre todos.'}
+];
+let introIdx=0;
+function renderIntro(){ const s=introSteps[introIdx];
+  $('#introBody').innerHTML=`<div style="font-size:42px">${s.e}</div><h3 style="margin:12px 0 8px;font-size:18px">${esc(s.t)}</h3><p style="color:var(--muted);font-size:14px;line-height:1.6;max-width:430px;margin:0 auto">${s.d}</p>`;
+  $('#introDots').innerHTML=introSteps.map((_,i)=>`<span style="width:7px;height:7px;border-radius:50%;background:${i===introIdx?'var(--accent)':'var(--line)'}"></span>`).join('');
+  $('#introNext').textContent=introIdx===introSteps.length-1?'Empezar':'Siguiente'; }
+function openIntro(){ introIdx=0; renderIntro(); $('#introDlg').showModal(); }
+$('#introNext').onclick=()=>{ if(introIdx<introSteps.length-1){ introIdx++; renderIntro(); } else { localStorage.setItem('seenIntro','1'); $('#introDlg').close(); } };
+$('#introSkip').onclick=()=>{ localStorage.setItem('seenIntro','1'); $('#introDlg').close(); };
+$('#helpBtn').onclick=openIntro;
 
 sb.auth.getSession();
 </script>
